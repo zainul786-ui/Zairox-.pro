@@ -1,6 +1,7 @@
 package com.example.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -59,11 +60,14 @@ import androidx.compose.ui.unit.sp
 import com.example.data.VoiceState
 import com.example.ui.theme.CyanGlow
 import com.example.ui.theme.CyanNeon
+import com.example.ui.theme.CyanUltra
 import com.example.ui.theme.DeepMidnight
 import com.example.ui.theme.ElectricBlue
 import com.example.ui.theme.ErrorRed
-import com.example.ui.theme.GlassBorder
-import com.example.ui.theme.GlassSurface
+import com.example.ui.theme.GlassBorderCyan
+import com.example.ui.theme.GlassBorderElectric
+import com.example.ui.theme.GlassSurfaceDark
+import com.example.ui.theme.GlassSurfaceLight
 import com.example.ui.theme.ListeningCyan
 import com.example.ui.theme.SpeakingBlue
 import com.example.ui.theme.SurfaceDark
@@ -88,24 +92,36 @@ fun VoiceControlDeck(
     var isKeyboardOpen by remember { mutableStateOf(false) }
     var textInput by remember { mutableStateOf("") }
 
-    val infiniteTransition = rememberInfiniteTransition(label = "mic_pulse")
-    val micScale by infiniteTransition.animateFloat(
+    val infiniteTransition = rememberInfiniteTransition(label = "deck_anim")
+
+    // Ripple wave 1 for glowing central mic
+    val rippleScale1 by infiniteTransition.animateFloat(
         initialValue = 1f,
-        targetValue = if (voiceState == VoiceState.LISTENING) 1.15f else 1f,
+        targetValue = 1.45f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 650),
-            repeatMode = RepeatMode.Reverse
+            animation = tween(durationMillis = 1100, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Restart
         ),
-        label = "mic_scale_anim"
+        label = "ripple_scale_1"
+    )
+
+    val rippleAlpha1 by infiniteTransition.animateFloat(
+        initialValue = 0.7f,
+        targetValue = 0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1100, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "ripple_alpha_1"
     )
 
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .padding(horizontal = 16.dp, vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // Expandable Text Chat Drawer
+        // Expandable Cyber Console Text Input Drawer
         AnimatedVisibility(
             visible = isKeyboardOpen,
             enter = expandVertically() + fadeIn(),
@@ -123,21 +139,22 @@ fun VoiceControlDeck(
                     onValueChange = { textInput = it },
                     placeholder = {
                         Text(
-                            "Transmit text query to JARVIS...",
+                            "Enter tactical terminal query...",
                             color = TextMuted,
-                            fontSize = 13.sp
+                            fontSize = 13.sp,
+                            fontFamily = FontFamily.Monospace
                         )
                     },
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = CyanNeon,
-                        unfocusedBorderColor = GlassBorder,
+                        unfocusedBorderColor = GlassBorderCyan,
                         focusedTextColor = TextWhite,
                         unfocusedTextColor = TextWhite,
                         cursorColor = CyanNeon,
-                        focusedContainerColor = SurfaceDark,
-                        unfocusedContainerColor = SurfaceDark
+                        focusedContainerColor = Color(0xF00A142D),
+                        unfocusedContainerColor = Color(0xD9060C1B)
                     ),
-                    shape = RoundedCornerShape(24.dp),
+                    shape = RoundedCornerShape(20.dp),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                     keyboardActions = KeyboardActions(
                         onSend = {
@@ -163,176 +180,204 @@ fun VoiceControlDeck(
                         }
                     },
                     modifier = Modifier
-                        .size(48.dp)
+                        .size(50.dp)
                         .clip(CircleShape)
-                        .background(CyanNeon)
+                        .background(
+                            Brush.linearGradient(listOf(CyanNeon, ElectricBlue))
+                        )
                         .testTag("send_text_button")
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.Send,
                         contentDescription = "Send text to JARVIS",
                         tint = DeepMidnight,
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(22.dp)
                     )
                 }
             }
         }
 
-        // Primary Control Deck Row
-        Row(
+        // Floating Frosted Glass Capsule Dock
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(32.dp))
-                .background(GlassSurface)
-                .border(1.dp, GlassBorder, RoundedCornerShape(32.dp))
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            // Left Action: Keyboard / Text mode toggle
-            IconButton(
-                onClick = { isKeyboardOpen = !isKeyboardOpen },
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(CircleShape)
-                    .background(if (isKeyboardOpen) SurfaceVariantDark else Color.Transparent)
-                    .testTag("keyboard_toggle_button")
-            ) {
-                Icon(
-                    imageVector = if (isKeyboardOpen) Icons.Default.Close else Icons.Default.Keyboard,
-                    contentDescription = "Toggle Keyboard Input",
-                    tint = if (isKeyboardOpen) CyanNeon else TextSilver,
-                    modifier = Modifier.size(22.dp)
-                )
-            }
-
-            // Left secondary: Continuous mode toggle
-            IconButton(
-                onClick = onToggleContinuousMode,
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(CircleShape)
-                    .background(if (isContinuousMode) CyanGlow else Color.Transparent)
-                    .testTag("continuous_mode_button")
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Sync,
-                    contentDescription = "Toggle Continuous Mode",
-                    tint = if (isContinuousMode) CyanNeon else TextSilver,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-
-            // Center Primary Glowing Microphone Button
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier.size(72.dp)
-            ) {
-                // Outer glow halo when listening
-                if (voiceState == VoiceState.LISTENING) {
-                    Box(
-                        modifier = Modifier
-                            .size(72.dp)
-                            .scale(micScale)
-                            .clip(CircleShape)
-                            .background(
-                                Brush.radialGradient(
-                                    colors = listOf(
-                                        ListeningCyan.copy(alpha = 0.5f),
-                                        Color.Transparent
-                                    )
-                                )
-                            )
+                .clip(RoundedCornerShape(36.dp))
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            Color(0xDD09142E),
+                            Color(0xF2040916)
+                        )
                     )
-                }
-
+                )
+                .border(
+                    1.dp,
+                    Brush.horizontalGradient(
+                        listOf(
+                            GlassBorderCyan.copy(alpha = 0.6f),
+                            GlassBorderElectric.copy(alpha = 0.2f),
+                            GlassBorderCyan.copy(alpha = 0.5f)
+                        )
+                    ),
+                    RoundedCornerShape(36.dp)
+                )
+                .padding(horizontal = 16.dp, vertical = 10.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                // Left 1: Keyboard Drawer Toggle
                 IconButton(
-                    onClick = onMicClick,
+                    onClick = { isKeyboardOpen = !isKeyboardOpen },
                     modifier = Modifier
-                        .size(58.dp)
+                        .size(46.dp)
                         .clip(CircleShape)
-                        .background(
-                            when (voiceState) {
-                                VoiceState.LISTENING -> Brush.verticalGradient(listOf(ListeningCyan, ElectricBlue))
-                                VoiceState.THINKING -> Brush.verticalGradient(listOf(ThinkingAmber, Color(0xFFFF8F00)))
-                                VoiceState.SPEAKING -> Brush.verticalGradient(listOf(SpeakingBlue, CyanNeon))
-                                VoiceState.ERROR -> Brush.verticalGradient(listOf(ErrorRed, Color(0xFFC2185B)))
-                                VoiceState.IDLE -> Brush.verticalGradient(listOf(CyanNeon, ElectricBlue))
-                            }
-                        )
-                        .border(
-                            2.dp,
-                            if (voiceState == VoiceState.LISTENING) Color.White else CyanNeon.copy(alpha = 0.5f),
-                            CircleShape
-                        )
-                        .testTag("primary_mic_button")
+                        .background(if (isKeyboardOpen) GlassSurfaceLight else Color.Transparent)
+                        .testTag("keyboard_toggle_button")
                 ) {
                     Icon(
-                        imageVector = if (voiceState == VoiceState.SPEAKING) Icons.Default.VolumeOff else Icons.Default.Mic,
-                        contentDescription = "Voice Conversation Button",
-                        tint = DeepMidnight,
-                        modifier = Modifier.size(28.dp)
+                        imageVector = if (isKeyboardOpen) Icons.Default.Close else Icons.Default.Keyboard,
+                        contentDescription = "Toggle Keyboard Input",
+                        tint = if (isKeyboardOpen) CyanNeon else TextSilver,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+
+                // Left 2: Continuous Conversation Loop Toggle
+                IconButton(
+                    onClick = onToggleContinuousMode,
+                    modifier = Modifier
+                        .size(46.dp)
+                        .clip(CircleShape)
+                        .background(if (isContinuousMode) Color(0x3300F2FE) else Color.Transparent)
+                        .testTag("continuous_mode_button")
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.Sync,
+                            contentDescription = "Toggle Continuous Mode",
+                            tint = if (isContinuousMode) CyanNeon else TextSilver,
+                            modifier = Modifier.size(22.dp)
+                        )
+                        if (isContinuousMode) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .size(6.dp)
+                                    .clip(CircleShape)
+                                    .background(CyanNeon)
+                            )
+                        }
+                    }
+                }
+
+                // Center: Monumental Glowing Arc Reactor Mic
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier.size(76.dp)
+                ) {
+                    // Outward pulsing energy ripples when active
+                    if (voiceState == VoiceState.LISTENING || voiceState == VoiceState.SPEAKING) {
+                        val activeColor = if (voiceState == VoiceState.LISTENING) ListeningCyan else SpeakingBlue
+                        Box(
+                            modifier = Modifier
+                                .size(64.dp)
+                                .scale(rippleScale1)
+                                .clip(CircleShape)
+                                .background(activeColor.copy(alpha = rippleAlpha1))
+                        )
+                    }
+
+                    IconButton(
+                        onClick = onMicClick,
+                        modifier = Modifier
+                            .size(62.dp)
+                            .clip(CircleShape)
+                            .background(
+                                when (voiceState) {
+                                    VoiceState.LISTENING -> Brush.verticalGradient(listOf(CyanUltra, ListeningCyan, ElectricBlue))
+                                    VoiceState.THINKING -> Brush.verticalGradient(listOf(Color(0xFFFFD54F), ThinkingAmber, Color(0xFFFF8F00)))
+                                    VoiceState.SPEAKING -> Brush.verticalGradient(listOf(CyanNeon, SpeakingBlue, Color(0xFF0052D4)))
+                                    VoiceState.ERROR -> Brush.verticalGradient(listOf(Color(0xFFFF8A80), ErrorRed, Color(0xFFB71C1C)))
+                                    VoiceState.IDLE -> Brush.verticalGradient(listOf(CyanNeon, ElectricBlue, Color(0xFF0052D4)))
+                                }
+                            )
+                            .border(
+                                2.dp,
+                                Brush.verticalGradient(listOf(Color.White, CyanNeon.copy(alpha = 0.7f))),
+                                CircleShape
+                            )
+                            .testTag("primary_mic_button")
+                    ) {
+                        Icon(
+                            imageVector = if (voiceState == VoiceState.SPEAKING) Icons.Default.VolumeOff else Icons.Default.Mic,
+                            contentDescription = "Voice Conversation Button",
+                            tint = DeepMidnight,
+                            modifier = Modifier.size(30.dp)
+                        )
+                    }
+                }
+
+                // Right 1: Stop / Mute Speaking
+                IconButton(
+                    onClick = onStopSpeaking,
+                    enabled = voiceState == VoiceState.SPEAKING || voiceState == VoiceState.THINKING,
+                    modifier = Modifier
+                        .size(46.dp)
+                        .clip(CircleShape)
+                        .background(if (voiceState == VoiceState.SPEAKING) Color(0x33FF3366) else Color.Transparent)
+                        .testTag("stop_speaking_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Stop,
+                        contentDescription = "Stop Speaking",
+                        tint = if (voiceState == VoiceState.SPEAKING) ErrorRed else TextMuted,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+
+                // Right 2: End Active Session
+                IconButton(
+                    onClick = onEndSession,
+                    enabled = isSessionActive || voiceState != VoiceState.IDLE,
+                    modifier = Modifier
+                        .size(46.dp)
+                        .clip(CircleShape)
+                        .background(if (isSessionActive) GlassSurfaceLight else Color.Transparent)
+                        .testTag("end_session_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "End Voice Session",
+                        tint = if (isSessionActive) TextSilver else TextMuted,
+                        modifier = Modifier.size(22.dp)
                     )
                 }
             }
-
-            // Right Action: Stop / Mute speaking
-            IconButton(
-                onClick = onStopSpeaking,
-                enabled = voiceState == VoiceState.SPEAKING || voiceState == VoiceState.THINKING,
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(CircleShape)
-                    .background(if (voiceState == VoiceState.SPEAKING) ErrorRed.copy(alpha = 0.2f) else Color.Transparent)
-                    .testTag("stop_speaking_button")
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Stop,
-                    contentDescription = "Stop Speaking",
-                    tint = if (voiceState == VoiceState.SPEAKING) ErrorRed else TextMuted,
-                    modifier = Modifier.size(22.dp)
-                )
-            }
-
-            // Right secondary: End Active Session
-            IconButton(
-                onClick = onEndSession,
-                enabled = isSessionActive || voiceState != VoiceState.IDLE,
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(CircleShape)
-                    .background(if (isSessionActive) SurfaceVariantDark else Color.Transparent)
-                    .testTag("end_session_button")
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Close,
-                    contentDescription = "End Voice Session",
-                    tint = if (isSessionActive) TextSilver else TextMuted,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
         }
 
-        // Active Status indicator helper
+        // Sub-Dock Telemetry Status
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 4.dp, start = 8.dp, end = 8.dp),
+                .padding(top = 6.dp, start = 12.dp, end = 12.dp),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
-                text = if (isContinuousMode) "LOOP: CONTINUOUS" else "LOOP: PUSH-TO-TALK",
-                color = if (isContinuousMode) CyanNeon.copy(alpha = 0.8f) else TextMuted,
+                text = if (isContinuousMode) "MODE: CONTINUOUS ECHO // ACTIVE" else "MODE: PUSH-TO-TALK // MANUAL",
+                color = if (isContinuousMode) CyanNeon.copy(alpha = 0.85f) else TextMuted,
                 fontSize = 9.sp,
                 fontFamily = FontFamily.Monospace,
-                letterSpacing = 1.sp
+                letterSpacing = 1.2.sp
             )
             Text(
-                text = if (isSessionActive) "SESSION: ACTIVE" else "SESSION: STANDBY",
-                color = if (isSessionActive) ElectricBlue.copy(alpha = 0.8f) else TextMuted,
+                text = if (isSessionActive) "SESSION: ENGAGED" else "SESSION: STANDBY",
+                color = if (isSessionActive) ElectricBlue.copy(alpha = 0.85f) else TextMuted,
                 fontSize = 9.sp,
                 fontFamily = FontFamily.Monospace,
-                letterSpacing = 1.sp
+                letterSpacing = 1.2.sp
             )
         }
     }

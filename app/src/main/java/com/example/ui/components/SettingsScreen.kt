@@ -136,41 +136,42 @@ fun SettingsScreen(
     var testResult by remember { mutableStateOf<AIResult<String>?>(null) }
     var hasSavedFeedback by remember { mutableStateOf(false) }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        "JARVIS SYSTEM PROTOCOLS",
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.5.sp,
-                        color = CyanNeon
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack, modifier = Modifier.testTag("settings_back_button")) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Return to Assistant",
-                            tint = CyanNeon
+    HolographicBackground {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = {
+                        Text(
+                            "JARVIS SYSTEM PROTOCOLS",
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.5.sp,
+                            color = CyanNeon
                         )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = SpaceBlack
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = onBack, modifier = Modifier.testTag("settings_back_button")) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Return to Assistant",
+                                tint = CyanNeon
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color(0xCC040814)
+                    )
                 )
-            )
-        },
-        containerColor = SpaceBlack,
-        modifier = modifier.testTag("settings_screen")
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-        ) {
+            },
+            containerColor = Color.Transparent,
+            modifier = modifier.testTag("settings_screen")
+        ) { innerPadding ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+            ) {
             // Futuristic Tabs
             TabRow(
                 selectedTabIndex = selectedTab,
@@ -797,6 +798,7 @@ fun SettingsScreen(
             }
         }
     }
+}
 }
 
 @Composable

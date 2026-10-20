@@ -30,11 +30,15 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.example.data.VoiceState
 import com.example.ui.theme.CyanNeon
+import com.example.ui.theme.CyanUltra
 import com.example.ui.theme.ElectricBlue
 import com.example.ui.theme.ErrorRed
+import com.example.ui.theme.HologramTeal
 import com.example.ui.theme.ListeningCyan
+import com.example.ui.theme.PlasmaViolet
 import com.example.ui.theme.SpeakingBlue
 import com.example.ui.theme.ThinkingAmber
+import com.example.ui.theme.ThinkingGold
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -46,44 +50,44 @@ fun JarvisOrbVisualizer(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "jarvis_orb_animations")
+    val infiniteTransition = rememberInfiniteTransition(label = "jarvis_advanced_orb")
 
-    // Slow rotation for outer tech arcs
+    // Slow clockwise outer HUD ring rotation
     val outerAngle by infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = 360f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 12000, easing = LinearEasing),
+            animation = tween(durationMillis = 14000, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
-        label = "outer_rotation"
+        label = "outer_angle"
     )
 
-    // Reverse rotation for inner segmented ring
+    // Fast counter-clockwise inner segmented ring
     val innerAngle by infiniteTransition.animateFloat(
         initialValue = 360f,
         targetValue = 0f,
         animationSpec = infiniteRepeatable(
             animation = tween(
-                durationMillis = if (voiceState == VoiceState.THINKING) 3000 else 8000,
+                durationMillis = if (voiceState == VoiceState.THINKING) 2400 else 7000,
                 easing = LinearEasing
             ),
             repeatMode = RepeatMode.Restart
         ),
-        label = "inner_rotation"
+        label = "inner_angle"
     )
 
-    // Breathing pulse for core
-    val pulseScale by infiniteTransition.animateFloat(
-        initialValue = 0.92f,
-        targetValue = 1.08f,
+    // Core breathing and plasma pulse
+    val corePulse by infiniteTransition.animateFloat(
+        initialValue = 0.94f,
+        targetValue = 1.06f,
         animationSpec = infiniteRepeatable(
             animation = tween(
                 durationMillis = when (voiceState) {
-                    VoiceState.LISTENING -> 800
-                    VoiceState.THINKING -> 600
-                    VoiceState.SPEAKING -> 700
-                    else -> 2200
+                    VoiceState.LISTENING -> 600
+                    VoiceState.THINKING -> 450
+                    VoiceState.SPEAKING -> 550
+                    else -> 1800
                 },
                 easing = FastOutSlowInEasing
             ),
@@ -92,121 +96,183 @@ fun JarvisOrbVisualizer(
         label = "core_pulse"
     )
 
-    // Speaking sound wave oscillation phase
+    // Acoustic wave oscillation phase
     val wavePhase by infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = (2 * PI).toFloat(),
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1400, easing = LinearEasing),
+            animation = tween(
+                durationMillis = if (voiceState == VoiceState.SPEAKING) 1000 else 2000,
+                easing = LinearEasing
+            ),
             repeatMode = RepeatMode.Restart
         ),
         label = "wave_phase"
     )
 
+    // Color definitions based on state
     val primaryColor = when (voiceState) {
         VoiceState.LISTENING -> ListeningCyan
-        VoiceState.THINKING -> ThinkingAmber
+        VoiceState.THINKING -> ThinkingGold
         VoiceState.SPEAKING -> SpeakingBlue
         VoiceState.ERROR -> ErrorRed
         VoiceState.IDLE -> CyanNeon
     }
 
     val secondaryColor = when (voiceState) {
-        VoiceState.LISTENING -> ElectricBlue
-        VoiceState.THINKING -> Color(0xFFFFD54F)
-        VoiceState.SPEAKING -> CyanNeon
+        VoiceState.LISTENING -> CyanUltra
+        VoiceState.THINKING -> ThinkingAmber
+        VoiceState.SPEAKING -> HologramTeal
         VoiceState.ERROR -> Color(0xFFFF8A80)
         VoiceState.IDLE -> ElectricBlue
     }
 
+    val tertiaryColor = when (voiceState) {
+        VoiceState.LISTENING -> ElectricBlue
+        VoiceState.THINKING -> Color(0xFFFF6D00)
+        VoiceState.SPEAKING -> PlasmaViolet
+        VoiceState.ERROR -> Color(0xFFB71C1C)
+        VoiceState.IDLE -> PlasmaViolet
+    }
+
     Box(
         modifier = modifier
-            .size(260.dp)
+            .size(270.dp)
             .testTag("jarvis_orb_visualizer")
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
-                indication = ripple(bounded = false, radius = 130.dp),
+                indication = ripple(bounded = false, radius = 135.dp),
                 onClick = onClick
             ),
         contentAlignment = Alignment.Center
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val center = Offset(size.width / 2f, size.height / 2f)
-            val baseRadius = size.minDimension / 2f * 0.85f
+            val baseRadius = size.minDimension / 2f * 0.82f
 
-            // 1. Outermost audio reactive wave when listening or speaking
-            val dynamicRadius = if (voiceState == VoiceState.LISTENING) {
-                baseRadius + (audioRmsDb * 3.5f).coerceIn(0f, 28f)
-            } else if (voiceState == VoiceState.SPEAKING) {
-                baseRadius + (pulseScale - 1f) * 40f
-            } else {
-                baseRadius
+            // Dynamic reactive radius boost
+            val rmsBoost = when (voiceState) {
+                VoiceState.LISTENING -> (audioRmsDb * 4.5f).coerceIn(0f, 32f)
+                VoiceState.SPEAKING -> (sin(wavePhase * 2) * 12f).coerceAtLeast(0f)
+                VoiceState.THINKING -> (sin(wavePhase * 3) * 8f).coerceAtLeast(0f)
+                else -> 0f
             }
+            val dynamicRadius = baseRadius + rmsBoost
 
-            // Outer energy aura ring
+            // 1. Ambient Hologram Radial Glow
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        primaryColor.copy(alpha = 0.25f),
-                        primaryColor.copy(alpha = 0.05f),
+                        primaryColor.copy(alpha = 0.28f),
+                        secondaryColor.copy(alpha = 0.12f),
+                        tertiaryColor.copy(alpha = 0.04f),
                         Color.Transparent
                     ),
                     center = center,
-                    radius = dynamicRadius
+                    radius = dynamicRadius * 1.15f
                 ),
-                radius = dynamicRadius,
+                radius = dynamicRadius * 1.15f,
                 center = center
             )
 
-            // 2. Segmented Outer Geometric Arcs
-            drawSegmentedArcs(
-                center = center,
-                radius = dynamicRadius * 0.92f,
-                startAngle = outerAngle,
-                color = primaryColor.copy(alpha = 0.7f),
-                segments = 6,
-                arcLength = 36f,
-                strokeWidth = 3f
-            )
+            // 2. 360-Degree Circular Audio Spectrum / Frequency Equalizer Bars (40 Bars)
+            val barCount = 40
+            val barStep = (2 * PI / barCount).toFloat()
+            val innerSpectrumRadius = dynamicRadius * 0.88f
 
-            // 3. Middle Counter-Rotating Track
-            drawSegmentedArcs(
-                center = center,
-                radius = dynamicRadius * 0.74f,
-                startAngle = innerAngle,
-                color = secondaryColor.copy(alpha = 0.85f),
-                segments = 4,
-                arcLength = 54f,
-                strokeWidth = 2.5f
-            )
+            for (i in 0 until barCount) {
+                val angle = i * barStep
+                val harmonic = sin(angle * 5 + wavePhase) * cos(angle * 3)
+                val barLength = when (voiceState) {
+                    VoiceState.LISTENING -> 4f + (audioRmsDb * 3.5f * (0.6f + (harmonic * 0.4f).coerceAtLeast(0f))).coerceIn(2f, 28f)
+                    VoiceState.SPEAKING -> 6f + (sin(angle * 4 + wavePhase) * 14f).coerceIn(2f, 22f)
+                    VoiceState.THINKING -> 5f + (sin(angle * 8 + wavePhase * 2) * 8f).coerceIn(1f, 12f)
+                    else -> 3f + (sin(angle * 2 + wavePhase) * 3f).coerceIn(1f, 6f)
+                }
 
-            // 4. Harmonic Audio Wave Ring (Speaking / Listening Mode)
-            if (voiceState == VoiceState.SPEAKING || voiceState == VoiceState.LISTENING) {
-                drawWaveRing(
-                    center = center,
-                    radius = dynamicRadius * 0.58f,
-                    wavePhase = wavePhase,
-                    amplitude = if (voiceState == VoiceState.LISTENING) (audioRmsDb * 1.5f).coerceIn(2f, 12f) else 8f,
-                    color = primaryColor
-                )
-            } else {
-                // Static thin core track
-                drawCircle(
-                    color = primaryColor.copy(alpha = 0.4f),
-                    radius = dynamicRadius * 0.58f,
-                    center = center,
-                    style = Stroke(width = 1.5f)
+                val startX = center.x + innerSpectrumRadius * cos(angle)
+                val startY = center.y + innerSpectrumRadius * sin(angle)
+                val endX = center.x + (innerSpectrumRadius + barLength) * cos(angle)
+                val endY = center.y + (innerSpectrumRadius + barLength) * sin(angle)
+
+                val barColor = if (i % 2 == 0) primaryColor else secondaryColor
+                drawLine(
+                    color = barColor.copy(alpha = 0.75f),
+                    start = Offset(startX, startY),
+                    end = Offset(endX, endY),
+                    strokeWidth = 2.5f,
+                    cap = StrokeCap.Round
                 )
             }
 
-            // 5. Glowing Central Arc Reactor Core
-            val coreRadius = (dynamicRadius * 0.42f) * pulseScale
+            // 3. Outer Segmented Tech Compass Arcs (Clockwise)
+            drawSegmentedCompass(
+                center = center,
+                radius = dynamicRadius * 0.84f,
+                startAngle = outerAngle,
+                color = primaryColor.copy(alpha = 0.85f),
+                segments = 6,
+                arcLength = 34f,
+                strokeWidth = 3f
+            )
+
+            // Cardinal Navigation Tick Marks
+            drawCardinalTicks(
+                center = center,
+                radius = dynamicRadius * 0.84f,
+                rotationAngle = outerAngle,
+                color = CyanUltra.copy(alpha = 0.9f)
+            )
+
+            // 4. Middle Counter-Rotating Gear Ring (Counter-Clockwise)
+            drawSegmentedCompass(
+                center = center,
+                radius = dynamicRadius * 0.68f,
+                startAngle = innerAngle,
+                color = secondaryColor.copy(alpha = 0.9f),
+                segments = 4,
+                arcLength = 52f,
+                strokeWidth = 2.5f
+            )
+
+            // Inner Fine Track Circle
+            drawCircle(
+                color = primaryColor.copy(alpha = 0.35f),
+                radius = dynamicRadius * 0.54f,
+                center = center,
+                style = Stroke(width = 1.5f)
+            )
+
+            // 5. Orbital Particles / Spark Nodes
+            val particleCount = 6
+            for (p in 0 until particleCount) {
+                val pAngle = outerAngle * (PI / 180f).toFloat() + (p * 2 * PI / particleCount).toFloat()
+                val px = center.x + (dynamicRadius * 0.76f) * cos(pAngle)
+                val py = center.y + (dynamicRadius * 0.76f) * sin(pAngle)
+
+                drawCircle(
+                    color = Color.White,
+                    radius = 2.5f,
+                    center = Offset(px, py)
+                )
+                drawCircle(
+                    color = primaryColor.copy(alpha = 0.6f),
+                    radius = 5.5f,
+                    center = Offset(px, py)
+                )
+            }
+
+            // 6. Central Holographic Plasma Core
+            val coreRadius = (dynamicRadius * 0.38f) * corePulse
+
+            // Radial Plasma Bloom
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        Color.White.copy(alpha = 0.95f),
-                        primaryColor.copy(alpha = 0.85f),
-                        secondaryColor.copy(alpha = 0.45f),
+                        Color.White.copy(alpha = 0.98f),
+                        primaryColor.copy(alpha = 0.9f),
+                        secondaryColor.copy(alpha = 0.5f),
+                        tertiaryColor.copy(alpha = 0.15f),
                         Color.Transparent
                     ),
                     center = center,
@@ -216,45 +282,35 @@ fun JarvisOrbVisualizer(
                 center = center
             )
 
-            // Inner core bright dot
+            // Core Glass Ring Reticle
+            drawCircle(
+                color = Color.White.copy(alpha = 0.8f),
+                radius = coreRadius * 0.7f,
+                center = center,
+                style = Stroke(width = 1.5f)
+            )
+
+            // Bright Center Node
             drawCircle(
                 color = Color.White,
-                radius = coreRadius * 0.22f,
+                radius = coreRadius * 0.28f,
                 center = center
             )
 
-            // Cross node markers on core
-            val markerLength = coreRadius * 0.35f
-            val nodeColor = primaryColor.copy(alpha = 0.8f)
-            drawLine(
-                color = nodeColor,
-                start = Offset(center.x - coreRadius - markerLength, center.y),
-                end = Offset(center.x - coreRadius + 2f, center.y),
-                strokeWidth = 2f
-            )
-            drawLine(
-                color = nodeColor,
-                start = Offset(center.x + coreRadius - 2f, center.y),
-                end = Offset(center.x + coreRadius + markerLength, center.y),
-                strokeWidth = 2f
-            )
-            drawLine(
-                color = nodeColor,
-                start = Offset(center.x, center.y - coreRadius - markerLength),
-                end = Offset(center.x, center.y - coreRadius + 2f),
-                strokeWidth = 2f
-            )
-            drawLine(
-                color = nodeColor,
-                start = Offset(center.x, center.y + coreRadius - 2f),
-                end = Offset(center.x, center.y + coreRadius + markerLength),
-                strokeWidth = 2f
-            )
+            // Cross-hair Reticle Spikes
+            val spikeLength = coreRadius * 0.45f
+            val crossColor = primaryColor.copy(alpha = 0.85f)
+            val strokeW = 2f
+
+            drawLine(crossColor, Offset(center.x - coreRadius - spikeLength, center.y), Offset(center.x - coreRadius + 4f, center.y), strokeW)
+            drawLine(crossColor, Offset(center.x + coreRadius - 4f, center.y), Offset(center.x + coreRadius + spikeLength, center.y), strokeW)
+            drawLine(crossColor, Offset(center.x, center.y - coreRadius - spikeLength), Offset(center.x, center.y - coreRadius + 4f), strokeW)
+            drawLine(crossColor, Offset(center.x, center.y + coreRadius - 4f), Offset(center.x, center.y + coreRadius + spikeLength), strokeW)
         }
     }
 }
 
-private fun DrawScope.drawSegmentedArcs(
+private fun DrawScope.drawSegmentedCompass(
     center: Offset,
     radius: Float,
     startAngle: Float,
@@ -282,43 +338,25 @@ private fun DrawScope.drawSegmentedArcs(
     }
 }
 
-private fun DrawScope.drawWaveRing(
+private fun DrawScope.drawCardinalTicks(
     center: Offset,
     radius: Float,
-    wavePhase: Float,
-    amplitude: Float,
+    rotationAngle: Float,
     color: Color
 ) {
-    val pointCount = 60
-    var previousPoint: Offset? = null
-    var firstPoint: Offset? = null
-
-    for (i in 0..pointCount) {
-        val theta = (i.toFloat() / pointCount) * 2 * PI.toFloat()
-        val waveMod = sin(theta * 6 + wavePhase) * amplitude
-        val r = radius + waveMod
-        val x = center.x + r * cos(theta)
-        val y = center.y + r * sin(theta)
-        val point = Offset(x, y)
-
-        if (firstPoint == null) firstPoint = point
-        if (previousPoint != null) {
-            drawLine(
-                color = color.copy(alpha = 0.9f),
-                start = previousPoint,
-                end = point,
-                strokeWidth = 2.5f
-            )
-        }
-        previousPoint = point
-    }
-
-    if (firstPoint != null && previousPoint != null) {
+    val angles = listOf(0f, 90f, 180f, 270f)
+    for (deg in angles) {
+        val rad = (deg + rotationAngle) * (PI / 180f).toFloat()
+        val x1 = center.x + (radius - 5f) * cos(rad)
+        val y1 = center.y + (radius - 5f) * sin(rad)
+        val x2 = center.x + (radius + 7f) * cos(rad)
+        val y2 = center.y + (radius + 7f) * sin(rad)
         drawLine(
-            color = color.copy(alpha = 0.9f),
-            start = previousPoint,
-            end = firstPoint,
-            strokeWidth = 2.5f
+            color = color,
+            start = Offset(x1, y1),
+            end = Offset(x2, y2),
+            strokeWidth = 2.5f,
+            cap = StrokeCap.Square
         )
     }
 }

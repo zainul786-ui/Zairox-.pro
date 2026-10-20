@@ -29,6 +29,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -46,6 +47,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
@@ -55,17 +58,20 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.VoiceState
+import com.example.ui.components.HolographicBackground
 import com.example.ui.components.JarvisOrbVisualizer
 import com.example.ui.components.SettingsScreen
 import com.example.ui.components.StatusBadge
 import com.example.ui.components.TranscriptView
 import com.example.ui.components.VoiceControlDeck
 import com.example.ui.theme.CyanNeon
+import com.example.ui.theme.CyanUltra
 import com.example.ui.theme.DeepMidnight
 import com.example.ui.theme.ElectricBlue
 import com.example.ui.theme.ErrorRed
-import com.example.ui.theme.GlassBorder
-import com.example.ui.theme.GlassSurface
+import com.example.ui.theme.GlassBorderCyan
+import com.example.ui.theme.GlassSurfaceDark
+import com.example.ui.theme.GlassSurfaceLight
 import com.example.ui.theme.SpaceBlack
 import com.example.ui.theme.SuccessGreen
 import com.example.ui.theme.TextMuted
@@ -103,9 +109,8 @@ fun JarvisMainScreen(
 
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
-    ) { /* Notification permission result handled */ }
+    ) { /* Notification permission result */ }
 
-    // Request notification permission on Android 13+ if background session enabled
     LaunchedEffect(voiceSettings.backgroundSessionEnabled) {
         if (voiceSettings.backgroundSessionEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             val hasNotificationPermission = ContextCompat.checkSelfPermission(
@@ -149,79 +154,84 @@ fun JarvisMainScreen(
         return
     }
 
-    Scaffold(
-        containerColor = SpaceBlack,
-        modifier = modifier.fillMaxSize().testTag("jarvis_main_screen")
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .statusBarsPadding()
-        ) {
-            // A. Top Bar
-            TopBarArea(
-                presetName = aiConfig.preset.displayName,
-                modelName = aiConfig.modelName,
-                hasKey = viewModel.hasApiKey(),
-                onOpenSettings = { showSettings = true },
-                onClearHistory = { viewModel.clearConversation() }
-            )
-
-            // Dynamic Error Notice Banner
-            AnimatedVisibility(
-                visible = lastError != null,
-                enter = fadeIn(),
-                exit = fadeOut()
-            ) {
-                lastError?.let { err ->
-                    ErrorBanner(
-                        message = err,
-                        onDismiss = { viewModel.clearError() },
-                        onOpenSettings = { showSettings = true }
-                    )
-                }
-            }
-
-            // B. Central Orb Visualizer & Status Badge Area
+    HolographicBackground {
+        Scaffold(
+            containerColor = Color.Transparent,
+            modifier = modifier.fillMaxSize().testTag("jarvis_main_screen")
+        ) { innerPadding ->
             Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 4.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .statusBarsPadding()
             ) {
-                JarvisOrbVisualizer(
-                    voiceState = voiceState,
-                    audioRmsDb = audioRmsDb,
-                    onClick = onMicAction
+                // A. Stark Industries Holographic Header
+                CinematicTopBar(
+                    presetName = aiConfig.preset.displayName,
+                    modelName = aiConfig.modelName,
+                    hasKey = viewModel.hasApiKey(),
+                    onOpenSettings = { showSettings = true },
+                    onClearHistory = { viewModel.clearConversation() }
                 )
 
-                Spacer(modifier = Modifier.height(10.dp))
+                // High-Tech Telemetry Strip
+                HUDTelemetryStrip()
 
-                StatusBadge(voiceState = voiceState)
+                // Error Notice HUD Panel
+                AnimatedVisibility(
+                    visible = lastError != null,
+                    enter = fadeIn(),
+                    exit = fadeOut()
+                ) {
+                    lastError?.let { err ->
+                        CinematicErrorBanner(
+                            message = err,
+                            onDismiss = { viewModel.clearError() },
+                            onOpenSettings = { showSettings = true }
+                        )
+                    }
+                }
+
+                // B. Center Holographic Arc Reactor Core & Dynamic Status
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    JarvisOrbVisualizer(
+                        voiceState = voiceState,
+                        audioRmsDb = audioRmsDb,
+                        onClick = onMicAction
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    StatusBadge(voiceState = voiceState)
+                }
+
+                // C. Frosted Glassmorphism Transcript
+                TranscriptView(
+                    messages = messages,
+                    partialTranscript = partialTranscript,
+                    onSpeakMessage = { viewModel.speakMessage(it) },
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                )
+
+                // D. Floating Control Deck
+                VoiceControlDeck(
+                    voiceState = voiceState,
+                    isSessionActive = isSessionActive,
+                    isContinuousMode = voiceSettings.continuousMode,
+                    onMicClick = onMicAction,
+                    onStopSpeaking = { viewModel.stopSpeaking() },
+                    onEndSession = { viewModel.endSession() },
+                    onToggleContinuousMode = { viewModel.toggleContinuousMode() },
+                    onSendTextMessage = { text -> viewModel.sendTextMessage(text) }
+                )
             }
-
-            // C. Conversation Transcript Area
-            TranscriptView(
-                messages = messages,
-                partialTranscript = partialTranscript,
-                onSpeakMessage = { viewModel.speakMessage(it) },
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-            )
-
-            // D. Bottom Controls Deck
-            VoiceControlDeck(
-                voiceState = voiceState,
-                isSessionActive = isSessionActive,
-                isContinuousMode = voiceSettings.continuousMode,
-                onMicClick = onMicAction,
-                onStopSpeaking = { viewModel.stopSpeaking() },
-                onEndSession = { viewModel.endSession() },
-                onToggleContinuousMode = { viewModel.toggleContinuousMode() },
-                onSendTextMessage = { text -> viewModel.sendTextMessage(text) }
-            )
         }
     }
 
@@ -229,11 +239,11 @@ fun JarvisMainScreen(
         AlertDialog(
             onDismissRequest = { showPermissionRationale = false },
             title = {
-                Text("Microphone Access Required", color = CyanNeon, fontWeight = FontWeight.Bold)
+                Text("Microphone Authorization Required", color = CyanNeon, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
             },
             text = {
                 Text(
-                    "JARVIS requires microphone permission to listen to your voice commands and conduct speech interactions. Please grant permission to activate voice mode.",
+                    "JARVIS requires acoustic sensor access to capture vocal frequencies and decode speech commands. Grant microphone permission to initiate tactical voice interface.",
                     color = TextWhite,
                     fontSize = 13.sp
                 )
@@ -244,14 +254,14 @@ fun JarvisMainScreen(
                         showPermissionRationale = false
                         permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = CyanNeon, contentColor = SpaceBlack)
+                    colors = ButtonDefaults.buttonColors(containerColor = CyanNeon, contentColor = DeepMidnight)
                 ) {
-                    Text("Grant Permission", fontWeight = FontWeight.Bold)
+                    Text("Authorize Sensor", fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showPermissionRationale = false }) {
-                    Text("Cancel", color = TextSilver)
+                    Text("Dismiss", color = TextSilver)
                 }
             },
             containerColor = DeepMidnight
@@ -260,7 +270,7 @@ fun JarvisMainScreen(
 }
 
 @Composable
-fun TopBarArea(
+fun CinematicTopBar(
     presetName: String,
     modelName: String,
     hasKey: Boolean,
@@ -270,39 +280,61 @@ fun TopBarArea(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .padding(horizontal = 16.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        // Futuristic Brand Wordmark
+        // Metallic Cyan Brand Wordmark
         Column {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "J.A.R.V.I.S.",
+                    color = CyanUltra,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Black,
+                    fontFamily = FontFamily.Monospace,
+                    letterSpacing = 3.5.sp
+                )
+                Spacer(modifier = Modifier.size(6.dp))
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Color(0x3300F2FE))
+                        .border(0.5.dp, CyanNeon.copy(alpha = 0.5f), RoundedCornerShape(4.dp))
+                        .padding(horizontal = 4.dp, vertical = 1.dp)
+                ) {
+                    Text(
+                        text = "MK-85",
+                        color = CyanNeon,
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+            }
             Text(
-                text = "J.A.R.V.I.S.",
-                color = CyanNeon,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.ExtraBold,
-                fontFamily = FontFamily.Monospace,
-                letterSpacing = 3.sp
-            )
-            Text(
-                text = "NEURAL VOICE INTERFACE",
+                text = "NEURAL VOICE INTERFACE // TACTICAL HUD",
                 color = ElectricBlue,
                 fontSize = 9.sp,
                 fontFamily = FontFamily.Monospace,
-                letterSpacing = 1.sp
+                letterSpacing = 1.2.sp
             )
         }
 
-        // Connection / Model Pill
+        // Action Tray & Model Status Pill
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(GlassSurface)
-                    .border(1.dp, if (hasKey) CyanNeon.copy(alpha = 0.4f) else ThinkingAmber.copy(alpha = 0.6f), RoundedCornerShape(14.dp))
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(GlassSurfaceDark)
+                    .border(
+                        1.dp,
+                        if (hasKey) GlassBorderCyan else ThinkingAmber.copy(alpha = 0.6f),
+                        RoundedCornerShape(16.dp)
+                    )
                     .clickable(onClick = onOpenSettings)
                     .padding(horizontal = 10.dp, vertical = 5.dp)
             ) {
@@ -312,7 +344,7 @@ fun TopBarArea(
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(6.dp)
+                            .size(7.dp)
                             .clip(CircleShape)
                             .background(if (hasKey) SuccessGreen else ThinkingAmber)
                     )
@@ -321,7 +353,7 @@ fun TopBarArea(
                         color = if (hasKey) TextWhite else ThinkingAmber,
                         fontSize = 10.sp,
                         fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.SemiBold
+                        fontWeight = FontWeight.Bold
                     )
                 }
             }
@@ -329,28 +361,32 @@ fun TopBarArea(
             IconButton(
                 onClick = onClearHistory,
                 modifier = Modifier
-                    .size(36.dp)
+                    .size(38.dp)
+                    .clip(CircleShape)
+                    .background(GlassSurfaceLight)
                     .testTag("top_bar_clear_history_button")
             ) {
                 Icon(
                     imageVector = Icons.Default.DeleteSweep,
-                    contentDescription = "Clear History",
+                    contentDescription = "Purge Transcript",
                     tint = TextSilver,
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(19.dp)
                 )
             }
 
             IconButton(
                 onClick = onOpenSettings,
                 modifier = Modifier
-                    .size(36.dp)
+                    .size(38.dp)
+                    .clip(CircleShape)
+                    .background(GlassSurfaceLight)
                     .testTag("top_bar_settings_button")
             ) {
                 Icon(
                     imageVector = Icons.Default.Settings,
-                    contentDescription = "Open Settings",
+                    contentDescription = "Open Protocols",
                     tint = CyanNeon,
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(19.dp)
                 )
             }
         }
@@ -358,7 +394,37 @@ fun TopBarArea(
 }
 
 @Composable
-fun ErrorBanner(
+fun HUDTelemetryStrip() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 2.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Icon(Icons.Default.Shield, contentDescription = null, tint = CyanNeon.copy(alpha = 0.6f), modifier = Modifier.size(11.dp))
+            Text(
+                "KEYSTORE // AES-256-GCM",
+                color = CyanNeon.copy(alpha = 0.6f),
+                fontSize = 8.5.sp,
+                fontFamily = FontFamily.Monospace
+            )
+        }
+        Text(
+            "SYS.LOAD: NOMINAL // 44.1 kHz",
+            color = ElectricBlue.copy(alpha = 0.6f),
+            fontSize = 8.5.sp,
+            fontFamily = FontFamily.Monospace
+        )
+    }
+}
+
+@Composable
+fun CinematicErrorBanner(
     message: String,
     onDismiss: () -> Unit,
     onOpenSettings: () -> Unit
@@ -367,10 +433,23 @@ fun ErrorBanner(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(ErrorRed.copy(alpha = 0.15f))
-            .border(1.dp, ErrorRed.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
-            .padding(10.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(
+                Brush.horizontalGradient(
+                    listOf(
+                        Color(0xE62A0814),
+                        Color(0xD91E040D)
+                    )
+                )
+            )
+            .border(
+                1.dp,
+                Brush.horizontalGradient(
+                    listOf(ErrorRed, Color.Transparent, ErrorRed.copy(0.4f))
+                ),
+                RoundedCornerShape(14.dp)
+            )
+            .padding(12.dp)
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -379,17 +458,18 @@ fun ErrorBanner(
         ) {
             Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
                 Text(
-                    text = "SYSTEM NOTICE",
+                    text = "CRITICAL ALERT // INTERRUPT",
                     color = ErrorRed,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace
+                    fontFamily = FontFamily.Monospace,
+                    letterSpacing = 1.sp
                 )
                 Text(
                     text = message,
                     color = TextWhite,
-                    fontSize = 11.sp,
-                    lineHeight = 15.sp
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp
                 )
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
