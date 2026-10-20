@@ -3,11 +3,15 @@ package com.example.data
 import java.util.UUID
 
 enum class VoiceState {
-    IDLE,
+    READY,
     LISTENING,
+    USER_SPEAKING,
     THINKING,
-    SPEAKING,
-    ERROR
+    JARVIS_SPEAKING,
+    INTERRUPTED,
+    RECONNECTING,
+    ERROR,
+    SESSION_ENDED
 }
 
 enum class ProviderPreset(val displayName: String, val defaultBaseUrl: String, val defaultModel: String) {
@@ -46,7 +50,13 @@ data class VoiceSettings(
     val voiceName: String? = null,
     val continuousMode: Boolean = true,
     val pushToTalkMode: Boolean = false,
-    val backgroundSessionEnabled: Boolean = false
+    val backgroundSessionEnabled: Boolean = false,
+    val interruptJarvisOnSpeech: Boolean = true,
+    val vadSensitivity: Float = 0.65f, // 0.1 (low) to 1.0 (high)
+    val endOfSpeechSilenceMs: Int = 700, // silence interval (ms)
+    val hardwareEchoCancellation: Boolean = true,
+    val hardwareNoiseSuppression: Boolean = true,
+    val realtimeApiMode: Boolean = false
 )
 
 const val DEFAULT_JARVIS_PROMPT = """You are JARVIS, a sophisticated personal AI assistant. You are intelligent, composed, observant, confident, articulate, and subtly witty. You communicate naturally, with a polished futuristic-assistant personality.

@@ -32,6 +32,14 @@ class JarvisPreferences(private val context: Context) {
         val KEY_CONTINUOUS_MODE = booleanPreferencesKey("continuous_mode")
         val KEY_PUSH_TO_TALK = booleanPreferencesKey("push_to_talk")
         val KEY_BACKGROUND_SESSION = booleanPreferencesKey("background_session")
+
+        // Full-duplex interruption & VAD keys
+        val KEY_INTERRUPT_ON_SPEECH = booleanPreferencesKey("interrupt_on_speech")
+        val KEY_VAD_SENSITIVITY = floatPreferencesKey("vad_sensitivity")
+        val KEY_END_OF_SPEECH_SILENCE_MS = intPreferencesKey("end_of_speech_silence_ms")
+        val KEY_ECHO_CANCELLATION = booleanPreferencesKey("echo_cancellation")
+        val KEY_NOISE_SUPPRESSION = booleanPreferencesKey("noise_suppression")
+        val KEY_REALTIME_API_MODE = booleanPreferencesKey("realtime_api_mode")
     }
 
     val aiConfigFlow: Flow<AIProviderConfig> = context.dataStore.data.map { prefs ->
@@ -71,7 +79,13 @@ class JarvisPreferences(private val context: Context) {
             voiceName = prefs[KEY_VOICE_NAME],
             continuousMode = prefs[KEY_CONTINUOUS_MODE] ?: true,
             pushToTalkMode = prefs[KEY_PUSH_TO_TALK] ?: false,
-            backgroundSessionEnabled = prefs[KEY_BACKGROUND_SESSION] ?: false
+            backgroundSessionEnabled = prefs[KEY_BACKGROUND_SESSION] ?: false,
+            interruptJarvisOnSpeech = prefs[KEY_INTERRUPT_ON_SPEECH] ?: true,
+            vadSensitivity = prefs[KEY_VAD_SENSITIVITY] ?: 0.65f,
+            endOfSpeechSilenceMs = prefs[KEY_END_OF_SPEECH_SILENCE_MS] ?: 700,
+            hardwareEchoCancellation = prefs[KEY_ECHO_CANCELLATION] ?: true,
+            hardwareNoiseSuppression = prefs[KEY_NOISE_SUPPRESSION] ?: true,
+            realtimeApiMode = prefs[KEY_REALTIME_API_MODE] ?: false
         )
     }
 
@@ -100,6 +114,12 @@ class JarvisPreferences(private val context: Context) {
             prefs[KEY_CONTINUOUS_MODE] = settings.continuousMode
             prefs[KEY_PUSH_TO_TALK] = settings.pushToTalkMode
             prefs[KEY_BACKGROUND_SESSION] = settings.backgroundSessionEnabled
+            prefs[KEY_INTERRUPT_ON_SPEECH] = settings.interruptJarvisOnSpeech
+            prefs[KEY_VAD_SENSITIVITY] = settings.vadSensitivity
+            prefs[KEY_END_OF_SPEECH_SILENCE_MS] = settings.endOfSpeechSilenceMs
+            prefs[KEY_ECHO_CANCELLATION] = settings.hardwareEchoCancellation
+            prefs[KEY_NOISE_SUPPRESSION] = settings.hardwareNoiseSuppression
+            prefs[KEY_REALTIME_API_MODE] = settings.realtimeApiMode
         }
     }
 

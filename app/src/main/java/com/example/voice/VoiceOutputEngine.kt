@@ -1,6 +1,7 @@
 package com.example.voice
 
 import android.content.Context
+import android.media.AudioAttributes
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
@@ -58,6 +59,16 @@ class AndroidTextToSpeechEngine(private val context: Context) : VoiceOutputEngin
     private fun applySettings() {
         tts?.setSpeechRate(currentSpeechRate)
         tts?.setPitch(currentSpeechPitch)
+
+        // Configure AudioAttributes to allow hardware Acoustic Echo Canceler (AEC) to isolate speech
+        try {
+            val audioAttributes = AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                .build()
+            tts?.setAudioAttributes(audioAttributes)
+        } catch (_: Exception) {}
+
         if (!currentVoiceName.isNullOrBlank()) {
             val matchingVoice = tts?.voices?.firstOrNull { it.name == currentVoiceName }
             if (matchingVoice != null) {
@@ -115,6 +126,7 @@ class AndroidTextToSpeechEngine(private val context: Context) : VoiceOutputEngin
         try {
             tts?.stop()
         } catch (_: Exception) {}
+        currentListener = null
     }
 
     override fun isSpeaking(): Boolean {

@@ -52,10 +52,11 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
 
     fun onOrbClick() {
         when (voiceState.value) {
-            VoiceState.IDLE, VoiceState.ERROR -> startListening()
-            VoiceState.LISTENING -> coordinator.stopListening()
-            VoiceState.SPEAKING -> coordinator.stopSpeaking()
-            VoiceState.THINKING -> coordinator.endSession()
+            VoiceState.READY, VoiceState.ERROR, VoiceState.SESSION_ENDED -> startListening()
+            VoiceState.LISTENING, VoiceState.USER_SPEAKING -> coordinator.stopListening()
+            VoiceState.JARVIS_SPEAKING, VoiceState.THINKING -> coordinator.stopSpeaking()
+            VoiceState.INTERRUPTED -> coordinator.stopListening()
+            VoiceState.RECONNECTING -> coordinator.startListening()
         }
     }
 

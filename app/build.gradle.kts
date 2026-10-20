@@ -9,14 +9,31 @@ plugins {
   alias(libs.plugins.google.services)
 }
 
-// Automatically restore debug.keystore from debug.keystore.base64 if missing
+// Automatically restore debug.keystore from debug.keystore.base64 or generate if missing
 val debugKeystoreFile = rootProject.file("debug.keystore")
 val debugKeystoreBase64File = rootProject.file("debug.keystore.base64")
-if (!debugKeystoreFile.exists() && debugKeystoreBase64File.exists()) {
-  try {
-    val decoded = Base64.getDecoder().decode(debugKeystoreBase64File.readText().trim())
-    debugKeystoreFile.writeBytes(decoded)
-  } catch (_: Exception) {}
+if (!debugKeystoreFile.exists()) {
+  if (debugKeystoreBase64File.exists()) {
+    try {
+      val decoded = Base64.getDecoder().decode(debugKeystoreBase64File.readText().trim())
+      debugKeystoreFile.writeBytes(decoded)
+    } catch (_: Exception) {}
+  }
+  if (!debugKeystoreFile.exists()) {
+    try {
+      ProcessBuilder(
+        "keytool", "-genkey", "-v",
+        "-keystore", debugKeystoreFile.absolutePath,
+        "-storepass", "android",
+        "-alias", "androiddebugkey",
+        "-keypass", "android",
+        "-keyalg", "RSA",
+        "-keysize", "2048",
+        "-validity", "10000",
+        "-dname", "CN=Android Debug,O=Android,C=US"
+      ).inheritIO().start().waitFor()
+    } catch (_: Exception) {}
+  }
 }
 
 android {

@@ -39,6 +39,7 @@ import com.example.ui.theme.GlassSurfaceDark
 import com.example.ui.theme.GlassSurfaceLight
 import com.example.ui.theme.ListeningCyan
 import com.example.ui.theme.SpeakingBlue
+import com.example.ui.theme.TextSilver
 import com.example.ui.theme.ThinkingAmber
 
 @Composable
@@ -48,21 +49,29 @@ fun StatusBadge(
 ) {
     val stateColor by animateColorAsState(
         targetValue = when (voiceState) {
+            VoiceState.READY -> CyanNeon
             VoiceState.LISTENING -> ListeningCyan
+            VoiceState.USER_SPEAKING -> CyanNeon
             VoiceState.THINKING -> ThinkingAmber
-            VoiceState.SPEAKING -> SpeakingBlue
+            VoiceState.JARVIS_SPEAKING -> SpeakingBlue
+            VoiceState.INTERRUPTED -> Color(0xFFFF5252)
+            VoiceState.RECONNECTING -> Color(0xFFFFAB40)
             VoiceState.ERROR -> ErrorRed
-            VoiceState.IDLE -> CyanNeon
+            VoiceState.SESSION_ENDED -> TextSilver
         },
         label = "status_color_anim"
     )
 
     val labelText = when (voiceState) {
-        VoiceState.LISTENING -> "RECEPTIVE // LISTENING"
+        VoiceState.READY -> "SYSTEM READY // STANDBY"
+        VoiceState.LISTENING -> "FULL-DUPLEX // LISTENING"
+        VoiceState.USER_SPEAKING -> "USER VOICE // DETECTED"
         VoiceState.THINKING -> "COMPUTING // SYNTHESIZING"
-        VoiceState.SPEAKING -> "VOCALIZING // TRANSMITTING"
+        VoiceState.JARVIS_SPEAKING -> "VOCALIZING // TRANSMITTING"
+        VoiceState.INTERRUPTED -> "INTERRUPTED // LISTENING"
+        VoiceState.RECONNECTING -> "STREAM // RECONNECTING"
         VoiceState.ERROR -> "SYSTEM NOTICE // ALERT"
-        VoiceState.IDLE -> "SYSTEM READY // STANDBY"
+        VoiceState.SESSION_ENDED -> "SESSION ENDED // STANDBY"
     }
 
     val infiniteTransition = rememberInfiniteTransition(label = "pulse_indicator")

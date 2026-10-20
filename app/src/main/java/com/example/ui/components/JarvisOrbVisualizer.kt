@@ -84,9 +84,12 @@ fun JarvisOrbVisualizer(
         animationSpec = infiniteRepeatable(
             animation = tween(
                 durationMillis = when (voiceState) {
-                    VoiceState.LISTENING -> 600
+                    VoiceState.LISTENING -> 800
+                    VoiceState.USER_SPEAKING -> 400
                     VoiceState.THINKING -> 450
-                    VoiceState.SPEAKING -> 550
+                    VoiceState.JARVIS_SPEAKING -> 550
+                    VoiceState.INTERRUPTED -> 300
+                    VoiceState.RECONNECTING -> 700
                     else -> 1800
                 },
                 easing = FastOutSlowInEasing
@@ -102,7 +105,7 @@ fun JarvisOrbVisualizer(
         targetValue = (2 * PI).toFloat(),
         animationSpec = infiniteRepeatable(
             animation = tween(
-                durationMillis = if (voiceState == VoiceState.SPEAKING) 1000 else 2000,
+                durationMillis = if (voiceState == VoiceState.JARVIS_SPEAKING) 1000 else 2000,
                 easing = LinearEasing
             ),
             repeatMode = RepeatMode.Restart
@@ -113,26 +116,35 @@ fun JarvisOrbVisualizer(
     // Color definitions based on state
     val primaryColor = when (voiceState) {
         VoiceState.LISTENING -> ListeningCyan
+        VoiceState.USER_SPEAKING -> CyanUltra
         VoiceState.THINKING -> ThinkingGold
-        VoiceState.SPEAKING -> SpeakingBlue
+        VoiceState.JARVIS_SPEAKING -> SpeakingBlue
+        VoiceState.INTERRUPTED -> Color(0xFFFF5252)
+        VoiceState.RECONNECTING -> Color(0xFFFFAB40)
         VoiceState.ERROR -> ErrorRed
-        VoiceState.IDLE -> CyanNeon
+        VoiceState.READY, VoiceState.SESSION_ENDED -> CyanNeon
     }
 
     val secondaryColor = when (voiceState) {
         VoiceState.LISTENING -> CyanUltra
+        VoiceState.USER_SPEAKING -> ElectricBlue
         VoiceState.THINKING -> ThinkingAmber
-        VoiceState.SPEAKING -> HologramTeal
+        VoiceState.JARVIS_SPEAKING -> HologramTeal
+        VoiceState.INTERRUPTED -> Color(0xFFFF8A80)
+        VoiceState.RECONNECTING -> ThinkingAmber
         VoiceState.ERROR -> Color(0xFFFF8A80)
-        VoiceState.IDLE -> ElectricBlue
+        VoiceState.READY, VoiceState.SESSION_ENDED -> ElectricBlue
     }
 
     val tertiaryColor = when (voiceState) {
         VoiceState.LISTENING -> ElectricBlue
+        VoiceState.USER_SPEAKING -> PlasmaViolet
         VoiceState.THINKING -> Color(0xFFFF6D00)
-        VoiceState.SPEAKING -> PlasmaViolet
+        VoiceState.JARVIS_SPEAKING -> PlasmaViolet
+        VoiceState.INTERRUPTED -> Color(0xFFB71C1C)
+        VoiceState.RECONNECTING -> PlasmaViolet
         VoiceState.ERROR -> Color(0xFFB71C1C)
-        VoiceState.IDLE -> PlasmaViolet
+        VoiceState.READY, VoiceState.SESSION_ENDED -> PlasmaViolet
     }
 
     Box(
@@ -152,9 +164,12 @@ fun JarvisOrbVisualizer(
 
             // Dynamic reactive radius boost
             val rmsBoost = when (voiceState) {
-                VoiceState.LISTENING -> (audioRmsDb * 4.5f).coerceIn(0f, 32f)
-                VoiceState.SPEAKING -> (sin(wavePhase * 2) * 12f).coerceAtLeast(0f)
+                VoiceState.LISTENING -> (audioRmsDb * 2.5f).coerceIn(0f, 18f)
+                VoiceState.USER_SPEAKING -> (audioRmsDb * 4.5f).coerceIn(4f, 36f)
+                VoiceState.JARVIS_SPEAKING -> (sin(wavePhase * 2) * 14f).coerceAtLeast(0f)
                 VoiceState.THINKING -> (sin(wavePhase * 3) * 8f).coerceAtLeast(0f)
+                VoiceState.INTERRUPTED -> 20f
+                VoiceState.RECONNECTING -> 6f
                 else -> 0f
             }
             val dynamicRadius = baseRadius + rmsBoost
@@ -184,9 +199,12 @@ fun JarvisOrbVisualizer(
                 val angle = i * barStep
                 val harmonic = sin(angle * 5 + wavePhase) * cos(angle * 3)
                 val barLength = when (voiceState) {
-                    VoiceState.LISTENING -> 4f + (audioRmsDb * 3.5f * (0.6f + (harmonic * 0.4f).coerceAtLeast(0f))).coerceIn(2f, 28f)
-                    VoiceState.SPEAKING -> 6f + (sin(angle * 4 + wavePhase) * 14f).coerceIn(2f, 22f)
+                    VoiceState.LISTENING -> 4f + (audioRmsDb * 2.5f * (0.6f + (harmonic * 0.4f).coerceAtLeast(0f))).coerceIn(2f, 20f)
+                    VoiceState.USER_SPEAKING -> 6f + (audioRmsDb * 4.5f * (0.7f + (harmonic * 0.3f).coerceAtLeast(0f))).coerceIn(4f, 36f)
+                    VoiceState.JARVIS_SPEAKING -> 6f + (sin(angle * 4 + wavePhase) * 14f).coerceIn(2f, 22f)
                     VoiceState.THINKING -> 5f + (sin(angle * 8 + wavePhase * 2) * 8f).coerceIn(1f, 12f)
+                    VoiceState.INTERRUPTED -> 18f
+                    VoiceState.RECONNECTING -> 6f
                     else -> 3f + (sin(angle * 2 + wavePhase) * 3f).coerceIn(1f, 6f)
                 }
 

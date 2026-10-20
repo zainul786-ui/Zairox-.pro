@@ -279,8 +279,8 @@ fun VoiceControlDeck(
                     modifier = Modifier.size(76.dp)
                 ) {
                     // Outward pulsing energy ripples when active
-                    if (voiceState == VoiceState.LISTENING || voiceState == VoiceState.SPEAKING) {
-                        val activeColor = if (voiceState == VoiceState.LISTENING) ListeningCyan else SpeakingBlue
+                    if (voiceState == VoiceState.LISTENING || voiceState == VoiceState.USER_SPEAKING || voiceState == VoiceState.JARVIS_SPEAKING) {
+                        val activeColor = if (voiceState == VoiceState.JARVIS_SPEAKING) SpeakingBlue else ListeningCyan
                         Box(
                             modifier = Modifier
                                 .size(64.dp)
@@ -297,11 +297,12 @@ fun VoiceControlDeck(
                             .clip(CircleShape)
                             .background(
                                 when (voiceState) {
-                                    VoiceState.LISTENING -> Brush.verticalGradient(listOf(CyanUltra, ListeningCyan, ElectricBlue))
+                                    VoiceState.READY, VoiceState.SESSION_ENDED -> Brush.verticalGradient(listOf(CyanNeon, ElectricBlue, Color(0xFF0052D4)))
+                                    VoiceState.LISTENING, VoiceState.USER_SPEAKING -> Brush.verticalGradient(listOf(CyanUltra, ListeningCyan, ElectricBlue))
                                     VoiceState.THINKING -> Brush.verticalGradient(listOf(Color(0xFFFFD54F), ThinkingAmber, Color(0xFFFF8F00)))
-                                    VoiceState.SPEAKING -> Brush.verticalGradient(listOf(CyanNeon, SpeakingBlue, Color(0xFF0052D4)))
-                                    VoiceState.ERROR -> Brush.verticalGradient(listOf(Color(0xFFFF8A80), ErrorRed, Color(0xFFB71C1C)))
-                                    VoiceState.IDLE -> Brush.verticalGradient(listOf(CyanNeon, ElectricBlue, Color(0xFF0052D4)))
+                                    VoiceState.JARVIS_SPEAKING -> Brush.verticalGradient(listOf(CyanNeon, SpeakingBlue, Color(0xFF0052D4)))
+                                    VoiceState.INTERRUPTED, VoiceState.ERROR -> Brush.verticalGradient(listOf(Color(0xFFFF8A80), ErrorRed, Color(0xFFB71C1C)))
+                                    VoiceState.RECONNECTING -> Brush.verticalGradient(listOf(Color(0xFFFFD54F), ThinkingAmber, ElectricBlue))
                                 }
                             )
                             .border(
@@ -312,7 +313,7 @@ fun VoiceControlDeck(
                             .testTag("primary_mic_button")
                     ) {
                         Icon(
-                            imageVector = if (voiceState == VoiceState.SPEAKING) Icons.Default.VolumeOff else Icons.Default.Mic,
+                            imageVector = if (voiceState == VoiceState.JARVIS_SPEAKING) Icons.Default.VolumeOff else Icons.Default.Mic,
                             contentDescription = "Voice Conversation Button",
                             tint = DeepMidnight,
                             modifier = Modifier.size(30.dp)
@@ -323,17 +324,17 @@ fun VoiceControlDeck(
                 // Right 1: Stop / Mute Speaking
                 IconButton(
                     onClick = onStopSpeaking,
-                    enabled = voiceState == VoiceState.SPEAKING || voiceState == VoiceState.THINKING,
+                    enabled = voiceState == VoiceState.JARVIS_SPEAKING || voiceState == VoiceState.THINKING,
                     modifier = Modifier
                         .size(46.dp)
                         .clip(CircleShape)
-                        .background(if (voiceState == VoiceState.SPEAKING) Color(0x33FF3366) else Color.Transparent)
+                        .background(if (voiceState == VoiceState.JARVIS_SPEAKING) Color(0x33FF3366) else Color.Transparent)
                         .testTag("stop_speaking_button")
                 ) {
                     Icon(
                         imageVector = Icons.Default.Stop,
                         contentDescription = "Stop Speaking",
-                        tint = if (voiceState == VoiceState.SPEAKING) ErrorRed else TextMuted,
+                        tint = if (voiceState == VoiceState.JARVIS_SPEAKING) ErrorRed else TextMuted,
                         modifier = Modifier.size(24.dp)
                     )
                 }
@@ -341,7 +342,7 @@ fun VoiceControlDeck(
                 // Right 2: End Active Session
                 IconButton(
                     onClick = onEndSession,
-                    enabled = isSessionActive || voiceState != VoiceState.IDLE,
+                    enabled = isSessionActive || (voiceState != VoiceState.READY && voiceState != VoiceState.SESSION_ENDED),
                     modifier = Modifier
                         .size(46.dp)
                         .clip(CircleShape)

@@ -85,7 +85,7 @@ class JarvisVoiceService : Service() {
     }
 
     private fun startForegroundWithNotification() {
-        val notification = buildNotification(VoiceState.IDLE)
+        val notification = buildNotification(VoiceState.READY)
         val foregroundType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
         } else {
@@ -153,11 +153,15 @@ class JarvisVoiceService : Service() {
         )
 
         val statusText = when (state) {
-            VoiceState.LISTENING -> "Listening for your voice..."
+            VoiceState.READY -> "JARVIS Session Ready • Standby"
+            VoiceState.LISTENING -> "Full-Duplex Listening..."
+            VoiceState.USER_SPEAKING -> "Receiving speech input..."
             VoiceState.THINKING -> "Analyzing query & formulating response..."
-            VoiceState.SPEAKING -> "Vocalizing response..."
+            VoiceState.JARVIS_SPEAKING -> "Vocalizing response (Tap Mute to halt)..."
+            VoiceState.INTERRUPTED -> "Interrupted • Listening to your command..."
+            VoiceState.RECONNECTING -> "Reconnecting neural audio stream..."
             VoiceState.ERROR -> "Notice: Connection or audio issue"
-            VoiceState.IDLE -> "JARVIS Active Session • Standby"
+            VoiceState.SESSION_ENDED -> "Voice session terminated"
         }
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
