@@ -50,7 +50,11 @@ class JarvisCoreLogicTest {
 
         val gemini = ProviderPreset.GEMINI_OPENAI
         assertEquals("https://generativelanguage.googleapis.com/v1beta/openai", gemini.defaultBaseUrl)
-        assertEquals("gemini-1.5-flash", gemini.defaultModel)
+        assertEquals("gemini-2.5-flash", gemini.defaultModel)
+
+        val geminiLive = ProviderPreset.GEMINI_LIVE
+        assertEquals("wss://generativelanguage.googleapis.com", geminiLive.defaultBaseUrl)
+        assertTrue(geminiLive.isRealtimeLive)
     }
 
     @Test

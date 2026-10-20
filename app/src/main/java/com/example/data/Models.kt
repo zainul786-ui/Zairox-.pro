@@ -14,12 +14,13 @@ enum class VoiceState {
     SESSION_ENDED
 }
 
-enum class ProviderPreset(val displayName: String, val defaultBaseUrl: String, val defaultModel: String) {
-    OPENAI("OpenAI", "https://api.openai.com/v1", "gpt-4o-mini"),
+enum class ProviderPreset(val displayName: String, val defaultBaseUrl: String, val defaultModel: String, val isRealtimeLive: Boolean = false) {
+    GEMINI_LIVE("Gemini Live (Realtime Audio)", "wss://generativelanguage.googleapis.com", "models/gemini-2.5-flash-native-audio-preview-12-2025", isRealtimeLive = true),
     GROQ("Groq", "https://api.groq.com/openai/v1", "llama-3.3-70b-versatile"),
+    OPENAI("OpenAI", "https://api.openai.com/v1", "gpt-4o-mini"),
     OPENROUTER("OpenRouter", "https://openrouter.ai/api/v1", "google/gemini-2.5-flash"),
     DEEPSEEK("DeepSeek", "https://api.deepseek.com/v1", "deepseek-chat"),
-    GEMINI_OPENAI("Gemini (OpenAI API)", "https://generativelanguage.googleapis.com/v1beta/openai", "gemini-1.5-flash"),
+    GEMINI_OPENAI("Gemini (REST API)", "https://generativelanguage.googleapis.com/v1beta/openai", "gemini-2.5-flash"),
     CUSTOM("Custom Provider", "https://api.openai.com/v1", "gpt-4o-mini")
 }
 

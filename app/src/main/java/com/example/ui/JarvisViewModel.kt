@@ -51,18 +51,20 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun onOrbClick() {
-        when (voiceState.value) {
-            VoiceState.READY, VoiceState.ERROR, VoiceState.SESSION_ENDED -> startListening()
-            VoiceState.LISTENING, VoiceState.USER_SPEAKING -> coordinator.stopListening()
-            VoiceState.JARVIS_SPEAKING, VoiceState.THINKING -> coordinator.stopSpeaking()
-            VoiceState.INTERRUPTED -> coordinator.stopListening()
-            VoiceState.RECONNECTING -> coordinator.startListening()
+        if (!isSessionActive.value) {
+            startListening()
+        } else {
+            when (voiceState.value) {
+                VoiceState.JARVIS_SPEAKING, VoiceState.THINKING -> coordinator.stopSpeaking()
+                VoiceState.READY, VoiceState.ERROR, VoiceState.SESSION_ENDED -> startListening()
+                else -> endSession()
+            }
         }
     }
 
     fun startListening() {
         coordinator.startSession()
-        checkAndStartForegroundService()
+        JarvisVoiceService.start(getApplication())
     }
 
     fun stopSpeaking() {

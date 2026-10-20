@@ -215,7 +215,7 @@ fun SettingsScreen(
                         item {
                             SectionHeader("AI PROVIDER ARCHITECTURE")
                             Text(
-                                "Configure your external OpenAI-compatible chat completion provider. Credentials are encrypted in hardware via Android Keystore.",
+                                "Configure Gemini Live Realtime Audio or external OpenAI-compatible models. Credentials are encrypted in hardware via Android Keystore.",
                                 color = TextSilver,
                                 fontSize = 12.sp,
                                 lineHeight = 16.sp,
@@ -227,58 +227,108 @@ fun SettingsScreen(
                         item {
                             Text("SELECT PROVIDER PRESET", color = ElectricBlue, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
                             Spacer(modifier = Modifier.height(6.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                ProviderPreset.entries.take(3).forEach { preset ->
-                                    FilterChip(
-                                        selected = selectedPreset == preset,
-                                        onClick = {
-                                            selectedPreset = preset
-                                            baseUrl = preset.defaultBaseUrl
-                                            modelName = preset.defaultModel
-                                        },
-                                        label = { Text(preset.displayName, fontSize = 11.sp) },
-                                        colors = FilterChipDefaults.filterChipColors(
-                                            selectedContainerColor = CyanNeon.copy(alpha = 0.2f),
-                                            selectedLabelColor = CyanNeon,
-                                            containerColor = SurfaceDark,
-                                            labelColor = TextSilver
-                                        ),
-                                        border = FilterChipDefaults.filterChipBorder(
-                                            enabled = true,
+                            val allPresets = ProviderPreset.entries
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    allPresets.take(3).forEach { preset ->
+                                        FilterChip(
                                             selected = selectedPreset == preset,
-                                            borderColor = if (selectedPreset == preset) CyanNeon else GlassBorder
+                                            onClick = {
+                                                selectedPreset = preset
+                                                baseUrl = preset.defaultBaseUrl
+                                                modelName = preset.defaultModel
+                                            },
+                                            label = { Text(preset.displayName, fontSize = 11.sp) },
+                                            colors = FilterChipDefaults.filterChipColors(
+                                                selectedContainerColor = CyanNeon.copy(alpha = 0.2f),
+                                                selectedLabelColor = CyanNeon,
+                                                containerColor = SurfaceDark,
+                                                labelColor = TextSilver
+                                            ),
+                                            border = FilterChipDefaults.filterChipBorder(
+                                                enabled = true,
+                                                selected = selectedPreset == preset,
+                                                borderColor = if (selectedPreset == preset) CyanNeon else GlassBorder
+                                            )
                                         )
-                                    )
+                                    }
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    allPresets.drop(3).take(3).forEach { preset ->
+                                        FilterChip(
+                                            selected = selectedPreset == preset,
+                                            onClick = {
+                                                selectedPreset = preset
+                                                baseUrl = preset.defaultBaseUrl
+                                                modelName = preset.defaultModel
+                                            },
+                                            label = { Text(preset.displayName, fontSize = 11.sp) },
+                                            colors = FilterChipDefaults.filterChipColors(
+                                                selectedContainerColor = CyanNeon.copy(alpha = 0.2f),
+                                                selectedLabelColor = CyanNeon,
+                                                containerColor = SurfaceDark,
+                                                labelColor = TextSilver
+                                            ),
+                                            border = FilterChipDefaults.filterChipBorder(
+                                                enabled = true,
+                                                selected = selectedPreset == preset,
+                                                borderColor = if (selectedPreset == preset) CyanNeon else GlassBorder
+                                            )
+                                        )
+                                    }
+                                }
+                                if (allPresets.size > 6) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        allPresets.drop(6).forEach { preset ->
+                                            FilterChip(
+                                                selected = selectedPreset == preset,
+                                                onClick = {
+                                                    selectedPreset = preset
+                                                    baseUrl = preset.defaultBaseUrl
+                                                    modelName = preset.defaultModel
+                                                },
+                                                label = { Text(preset.displayName, fontSize = 11.sp) },
+                                                colors = FilterChipDefaults.filterChipColors(
+                                                    selectedContainerColor = CyanNeon.copy(alpha = 0.2f),
+                                                    selectedLabelColor = CyanNeon,
+                                                    containerColor = SurfaceDark,
+                                                    labelColor = TextSilver
+                                                ),
+                                                border = FilterChipDefaults.filterChipBorder(
+                                                    enabled = true,
+                                                    selected = selectedPreset == preset,
+                                                    borderColor = if (selectedPreset == preset) CyanNeon else GlassBorder
+                                                )
+                                            )
+                                        }
+                                    }
                                 }
                             }
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                ProviderPreset.entries.drop(3).forEach { preset ->
-                                    FilterChip(
-                                        selected = selectedPreset == preset,
-                                        onClick = {
-                                            selectedPreset = preset
-                                            baseUrl = preset.defaultBaseUrl
-                                            modelName = preset.defaultModel
-                                        },
-                                        label = { Text(preset.displayName, fontSize = 11.sp) },
-                                        colors = FilterChipDefaults.filterChipColors(
-                                            selectedContainerColor = CyanNeon.copy(alpha = 0.2f),
-                                            selectedLabelColor = CyanNeon,
-                                            containerColor = SurfaceDark,
-                                            labelColor = TextSilver
-                                        ),
-                                        border = FilterChipDefaults.filterChipBorder(
-                                            enabled = true,
-                                            selected = selectedPreset == preset,
-                                            borderColor = if (selectedPreset == preset) CyanNeon else GlassBorder
-                                        )
+
+                            if (selectedPreset.isRealtimeLive) {
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(Color(0x2200E5FF), RoundedCornerShape(8.dp))
+                                        .border(1.dp, CyanNeon.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                                        .padding(10.dp)
+                                ) {
+                                    Text(
+                                        text = "⚡ NATIVE REALTIME AUDIO: Bidirectional WebSocket stream (16kHz in -> 24kHz PCM out) with server-side barge-in interruption. Persistent mic capture stays active continuously.",
+                                        color = CyanNeon,
+                                        fontSize = 11.sp,
+                                        lineHeight = 15.sp,
+                                        fontFamily = FontFamily.Monospace
                                     )
                                 }
                             }

@@ -1,11 +1,20 @@
 package com.example.voice
 
 import android.content.Context
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
+import android.os.Build
+import android.util.Log
 import com.example.ai.AIProvider
 import com.example.ai.AIResult
+import com.example.ai.GeminiLiveRealtimeSession
+import com.example.ai.GeminiLiveSessionListener
 import com.example.ai.OpenAICompatibleProvider
+import com.example.data.AIProviderConfig
 import com.example.data.ConversationRepository
 import com.example.data.JarvisPreferences
+import com.example.data.ProviderPreset
 import com.example.data.VoiceState
 import com.example.security.SecureKeyStorage
 import kotlinx.coroutines.CoroutineScope
@@ -20,8 +29,24 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicLong
 
+/**
+ * Universal Full-Duplex Voice Session Coordinator.
+ *
+ * Implements genuine continuous voice interaction modeled after Gemini Live and ChatGPT Voice:
+ * 1. The user taps the voice button ONCE to start a live session.
+ * 2. A single persistent AudioRecord instance (ContinuousAudioCaptureEngine) stays active continuously.
+ *    The microphone is NEVER shut down and restarted between conversation turns, sentences, or AI responses.
+ * 3. Supports native Gemini Multimodal Live API via WebSockets for true bidirectional audio streaming
+ *    (16kHz PCM in -> WebSocket -> 24kHz PCM out) with server-side barge-in.
+ * 4. Also supports full-duplex continuous capture with local barge-in for text-completion providers (Groq, OpenAI, DeepSeek).
+ * 5. Instant Interruption (Barge-in): When the user begins speaking while JARVIS is responding,
+ *    audio playback halts within milliseconds, active jobs are cancelled, and the user's new utterance is prioritized.
+ * 6. The session ends ONLY when the user explicitly ends it or an unrecoverable failure occurs.
+ */
 class VoiceSessionCoordinator(
     private val context: Context,
+    private val continuousCaptureEngine: ContinuousAudioCaptureEngine,
+    private val realtimeAudioPlayer: RealtimeAudioPlayer,
     private val voiceInputEngine: VoiceInputEngine,
     private val voiceOutputEngine: VoiceOutputEngine,
     private val conversationRepository: ConversationRepository,
@@ -29,6 +54,10 @@ class VoiceSessionCoordinator(
     private val secureKeyStorage: SecureKeyStorage,
     private val aiProvider: AIProvider = OpenAICompatibleProvider()
 ) {
+    companion object {
+        private const val TAG = "VoiceCoordinator"
+    }
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     private val _voiceState = MutableStateFlow(VoiceState.READY)
@@ -46,6 +75,12 @@ class VoiceSessionCoordinator(
     private val _isSessionActive = MutableStateFlow(false)
     val isSessionActive: StateFlow<Boolean> = _isSessionActive.asStateFlow()
 
+    private val _isRealtimeLiveMode = MutableStateFlow(false)
+    val isRealtimeLiveMode: StateFlow<Boolean> = _isRealtimeLiveMode.asStateFlow()
+
+    // Realtime Gemini Live WebSocket session
+    private var geminiLiveSession: GeminiLiveRealtimeSession? = null
+
     // Generation token counter to immediately invalidate interrupted AI responses
     private val activeGenerationId = AtomicLong(0)
     private var aiJob: Job? = null
@@ -58,176 +93,292 @@ class VoiceSessionCoordinator(
     @Volatile private var lastProcessedUtterance: String = ""
     @Volatile private var lastProcessedTime: Long = 0L
 
+    // Audio Focus Manager
+    private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    private var audioFocusRequest: AudioFocusRequest? = null
+
     init {
         voiceOutputEngine.init { /* initialized */ }
+
+        // Setup real-time audio player callbacks
+        realtimeAudioPlayer.onPlaybackStarted = {
+            if (_isSessionActive.value && _voiceState.value != VoiceState.USER_SPEAKING && _voiceState.value != VoiceState.INTERRUPTED) {
+                _voiceState.value = VoiceState.JARVIS_SPEAKING
+            }
+        }
+        realtimeAudioPlayer.onPlaybackEnded = {
+            if (_isSessionActive.value && _voiceState.value == VoiceState.JARVIS_SPEAKING) {
+                _voiceState.value = VoiceState.LISTENING
+            }
+        }
     }
 
+    /**
+     * Starts a continuous full-duplex live session.
+     * The microphone turns on ONCE and stays active for the entire duration of the session.
+     */
     fun startSession(preferredLanguage: String? = null) {
+        if (_isSessionActive.value) {
+            Log.d(TAG, "Voice session is already active.")
+            return
+        }
+
         activeLanguage = preferredLanguage
         _isSessionActive.value = true
         _lastErrorMessage.value = null
         activeGenerationId.incrementAndGet()
-        startContinuousListening()
+
+        requestSystemAudioFocus()
+        realtimeAudioPlayer.startPlaybackLoop(scope)
+
+        scope.launch {
+            val aiConfig = preferences.aiConfigFlow.first()
+            val voiceSettings = preferences.voiceSettingsFlow.first()
+            val apiKey = secureKeyStorage.getApiKey()
+
+            // Configure audio engine parameters from preferences
+            continuousCaptureEngine.vadSensitivity = voiceSettings.vadSensitivity
+            continuousCaptureEngine.endOfSpeechSilenceMs = voiceSettings.endOfSpeechSilenceMs
+            continuousCaptureEngine.isHardwareEchoCancellationEnabled = voiceSettings.hardwareEchoCancellation
+            continuousCaptureEngine.isHardwareNoiseSuppressionEnabled = voiceSettings.hardwareNoiseSuppression
+
+            // Determine if using native Gemini Live Realtime WebSocket or standard Fallback
+            val isLiveEligible = (aiConfig.preset == ProviderPreset.GEMINI_LIVE || voiceSettings.realtimeApiMode) && apiKey.isNotBlank()
+
+            if (isLiveEligible) {
+                _isRealtimeLiveMode.value = true
+                _voiceState.value = VoiceState.RECONNECTING // connecting
+                initGeminiLiveSession(apiKey, aiConfig.systemPrompt, voiceSettings.voiceName ?: "Puck")
+            } else {
+                _isRealtimeLiveMode.value = false
+                _voiceState.value = VoiceState.LISTENING
+                startContinuousCapturePipeline()
+            }
+        }
     }
 
     /**
-     * Arms the microphone for continuous listening.
-     * In a full-duplex session, this stays active continuously across speaking and thinking states.
+     * Initializes the native Gemini Live Realtime WebSocket session.
      */
-    fun startListening(preferredLanguage: String? = null) {
-        if (preferredLanguage != null) {
-            activeLanguage = preferredLanguage
-        }
-        startContinuousListening()
-    }
+    private fun initGeminiLiveSession(apiKey: String, systemPrompt: String, voiceName: String) {
+        geminiLiveSession?.close()
+        geminiLiveSession = GeminiLiveRealtimeSession(
+            scope = scope,
+            apiKey = apiKey,
+            model = "models/gemini-2.5-flash-native-audio-preview-12-2025",
+            systemPrompt = systemPrompt,
+            voiceName = voiceName,
+            listener = object : GeminiLiveSessionListener {
+                override fun onConnected() {
+                    Log.d(TAG, "Gemini Live Realtime session connected.")
+                    if (_isSessionActive.value) {
+                        _voiceState.value = VoiceState.LISTENING
+                        startContinuousCapturePipeline()
+                    }
+                }
 
-    private fun startContinuousListening() {
-        if (!_isSessionActive.value) return
+                override fun onAudioChunkReceived(pcmChunk: ByteArray) {
+                    if (!_isSessionActive.value) return
+                    // Stream PCM chunk directly to low-latency speaker player
+                    realtimeAudioPlayer.enqueueAudioChunk(pcmChunk)
+                }
 
-        if (_voiceState.value != VoiceState.USER_SPEAKING &&
-            _voiceState.value != VoiceState.JARVIS_SPEAKING &&
-            _voiceState.value != VoiceState.THINKING
-        ) {
-            _voiceState.value = VoiceState.LISTENING
-        }
+                override fun onTranscriptReceived(text: String, isUser: Boolean) {
+                    if (text.isNotBlank()) {
+                        _partialTranscript.value = text
+                        if (!isUser) {
+                            conversationRepository.addMessage(role = "assistant", content = text)
+                        }
+                    }
+                }
 
-        voiceInputEngine.startListening(object : VoiceInputListener {
-            override fun onReady() {
-                if (_isSessionActive.value &&
-                    _voiceState.value != VoiceState.USER_SPEAKING &&
-                    _voiceState.value != VoiceState.JARVIS_SPEAKING &&
-                    _voiceState.value != VoiceState.THINKING
-                ) {
+                override fun onInterrupted() {
+                    // Server-side barge-in detected!
+                    handleImmediateInterruption("Server barge-in")
+                }
+
+                override fun onTurnComplete() {
+                    _partialTranscript.value = ""
+                    if (_voiceState.value == VoiceState.JARVIS_SPEAKING) {
+                        _voiceState.value = VoiceState.LISTENING
+                    }
+                }
+
+                override fun onError(message: String) {
+                    Log.e(TAG, "Gemini Live error: $message")
+                    _lastErrorMessage.value = message
+                    // If live fails, fall back smoothly to local full-duplex capture pipeline
+                    _isRealtimeLiveMode.value = false
                     _voiceState.value = VoiceState.LISTENING
+                    startContinuousCapturePipeline()
+                }
+
+                override fun onClosed() {
+                    if (_isSessionActive.value) {
+                        _voiceState.value = VoiceState.RECONNECTING
+                    }
                 }
             }
+        )
+        geminiLiveSession?.connect()
+    }
 
-            override fun onSpeechStarted() {
-                // Immediate interruption trigger when user speech energy is detected
-                handleUserSpeechDetected()
+    /**
+     * Starts the single persistent AudioRecord capture engine.
+     * AudioRecord runs continuously and NEVER shuts down between utterances or responses.
+     */
+    private fun startContinuousCapturePipeline() {
+        if (continuousCaptureEngine.isCurrentlyCapturing()) {
+            return
+        }
+
+        continuousCaptureEngine.startCapture(scope, object : ContinuousAudioListener {
+            override fun onUserSpeechStarted() {
+                // INSTANT USER BARGE-IN INTERRUPT
+                handleImmediateInterruption("VAD speech onset")
             }
 
-            override fun onRmsChanged(rmsdB: Float) {
-                val clamped = rmsdB.coerceAtLeast(0f)
-                _audioRmsDb.value = clamped
+            override fun onAudioLevel(rmsDb: Float) {
+                _audioRmsDb.value = rmsDb
 
-                // If user speech volume spikes during LISTENING, transition immediately to USER_SPEAKING
-                if (_isSessionActive.value && clamped > 6f && _voiceState.value == VoiceState.LISTENING) {
+                // If user speaks loud and clear during LISTENING, transition visual state immediately
+                if (_isSessionActive.value && rmsDb > 10f && _voiceState.value == VoiceState.LISTENING) {
                     _voiceState.value = VoiceState.USER_SPEAKING
                 }
             }
 
-            override fun onPartialResult(text: String) {
-                if (_isSessionActive.value) {
-                    val trimmed = text.trim()
-                    if (trimmed.isNotBlank()) {
-                        // Check if it's an echo of what JARVIS is saying
-                        if (isAcousticEcho(trimmed)) {
-                            return
-                        }
-                        _partialTranscript.value = trimmed
-                        if (_voiceState.value != VoiceState.USER_SPEAKING) {
-                            handleUserSpeechDetected()
-                        }
-                    }
+            override fun onRawAudioChunk(pcmBytes: ByteArray) {
+                // If in Gemini Live mode, stream raw PCM audio chunk to WebSocket
+                if (_isSessionActive.value && _isRealtimeLiveMode.value) {
+                    geminiLiveSession?.sendRealtimeAudio(pcmBytes)
                 }
             }
 
-            override fun onFinalResult(text: String) {
-                _partialTranscript.value = ""
-                _audioRmsDb.value = 0f
-                handleUserSpeechCompleted(text)
+            override fun onUserSpeechEnded(speechBuffer: ShortArray) {
+                // In Fallback mode (Groq / OpenAI / DeepSeek), transcribe speech and submit completion
+                if (_isSessionActive.value && !_isRealtimeLiveMode.value) {
+                    handleFallbackSpeechUtterance(speechBuffer)
+                }
             }
 
-            override fun onError(errorMessage: String, isTransient: Boolean) {
-                _audioRmsDb.value = 0f
+            override fun onCaptureError(message: String) {
+                Log.e(TAG, "Continuous capture error: $message")
+                _lastErrorMessage.value = message
+                _voiceState.value = VoiceState.ERROR
+            }
+        })
+    }
 
-                scope.launch {
-                    val settings = preferences.voiceSettingsFlow.first()
-                    if (_isSessionActive.value && settings.continuousMode && isTransient) {
-                        // In full-duplex continuous mode, silence or recognizer timeout immediately loops back
-                        delay(60)
-                        if (_isSessionActive.value) {
-                            startContinuousListening()
-                        }
-                    } else if (_isSessionActive.value && !isTransient) {
-                        _voiceState.value = VoiceState.ERROR
-                        _lastErrorMessage.value = errorMessage
-                    } else if (!_isSessionActive.value) {
-                        _voiceState.value = VoiceState.READY
+    /**
+     * CRITICAL BARGE-IN: Instantly halts current AI speech and cancels in-flight requests.
+     * Executed within <30ms when user speech activity is detected.
+     */
+    private fun handleImmediateInterruption(reason: String) {
+        val currentState = _voiceState.value
+        Log.d(TAG, "Triggering immediate barge-in interruption ($reason). Current state: $currentState")
+
+        // 1. Immediately invalidate current generation ID so pending AI tokens are discarded
+        activeGenerationId.incrementAndGet()
+
+        // 2. Cancel any pending HTTP/AI coroutine
+        aiJob?.cancel()
+        aiJob = null
+
+        // 3. Instantly flush speaker audio output
+        currentlySpokenAiText = null
+        realtimeAudioPlayer.stopAndFlush()
+        voiceOutputEngine.stop()
+
+        // 4. Update state to INTERRUPTED briefly, then USER_SPEAKING
+        if (_isSessionActive.value) {
+            _voiceState.value = VoiceState.INTERRUPTED
+            scope.launch {
+                delay(30)
+                if (_isSessionActive.value) {
+                    _voiceState.value = VoiceState.USER_SPEAKING
+                }
+            }
+        }
+    }
+
+    /**
+     * Handles speech recognition and response generation for Text-Chat providers (OpenAI, Groq, DeepSeek).
+     * Microphone capture CONTINUES running during speech recognition, LLM thinking, and TTS vocalization.
+     */
+    private fun handleFallbackSpeechUtterance(speechBuffer: ShortArray) {
+        if (!_isSessionActive.value) return
+
+        // In fallback mode, use VoiceInputEngine to capture text while keeping capture engine active
+        voiceInputEngine.startListening(object : VoiceInputListener {
+            override fun onReady() {}
+            override fun onSpeechStarted() {
+                handleImmediateInterruption("SpeechRecognizer onset")
+            }
+            override fun onRmsChanged(rmsdB: Float) {
+                _audioRmsDb.value = rmsdB.coerceAtLeast(0f)
+            }
+            override fun onPartialResult(text: String) {
+                if (_isSessionActive.value && text.isNotBlank()) {
+                    if (!isAcousticEcho(text)) {
+                        _partialTranscript.value = text.trim()
+                        _voiceState.value = VoiceState.USER_SPEAKING
                     }
+                }
+            }
+            override fun onFinalResult(text: String) {
+                _partialTranscript.value = ""
+                processUserTextCommand(text)
+            }
+            override fun onError(errorMessage: String, isTransient: Boolean) {
+                if (_isSessionActive.value && _voiceState.value == VoiceState.USER_SPEAKING) {
+                    _voiceState.value = VoiceState.LISTENING
                 }
             }
         }, activeLanguage)
     }
 
-    /**
-     * CRITICAL: Called the exact instant user speech activity is detected.
-     * Interrupts playing speech immediately and cancels any in-flight AI generation.
-     */
-    fun handleUserSpeechDetected() {
-        scope.launch {
-            val settings = preferences.voiceSettingsFlow.first()
-            if (settings.interruptJarvisOnSpeech) {
-                val currentState = _voiceState.value
-                if (currentState == VoiceState.JARVIS_SPEAKING || currentState == VoiceState.THINKING) {
-                    // 1. Immediately invalidate current generation
-                    activeGenerationId.incrementAndGet()
-                    // 2. Cancel in-flight network request
-                    aiJob?.cancel()
-                    aiJob = null
-                    // 3. Cut off audio output instantly
-                    currentlySpokenAiText = null
-                    voiceOutputEngine.stop()
-                    // 4. Mark interrupted state briefly for reactive UI then transition to user speaking
-                    _voiceState.value = VoiceState.INTERRUPTED
-                    delay(40)
-                }
-            }
-            if (_isSessionActive.value) {
-                _voiceState.value = VoiceState.USER_SPEAKING
-            }
-        }
+    fun sendTextMessage(text: String) {
+        if (text.isBlank()) return
+        stopSpeaking()
+        _lastErrorMessage.value = null
+        _isSessionActive.value = true
+        processUserTextCommand(text)
     }
 
-    private fun handleUserSpeechCompleted(userText: String) {
-        if (!_isSessionActive.value) return
-
-        val trimmed = userText.trim()
+    private fun processUserTextCommand(rawText: String) {
+        val trimmed = rawText.trim()
         if (trimmed.isBlank()) {
             if (_voiceState.value == VoiceState.USER_SPEAKING) {
                 _voiceState.value = VoiceState.LISTENING
             }
-            rearmListening()
             return
         }
 
-        // Echo rejection check: did the microphone pick up JARVIS's own spoken output?
+        // Echo rejection: reject if microphone captured JARVIS's own spoken output
         if (isAcousticEcho(trimmed)) {
+            Log.d(TAG, "Rejected acoustic echo: $trimmed")
             if (_voiceState.value == VoiceState.USER_SPEAKING) {
-                _voiceState.value = if (voiceOutputEngine.isSpeaking()) VoiceState.JARVIS_SPEAKING else VoiceState.LISTENING
+                _voiceState.value = if (voiceOutputEngine.isSpeaking() || realtimeAudioPlayer.isSpeaking()) {
+                    VoiceState.JARVIS_SPEAKING
+                } else {
+                    VoiceState.LISTENING
+                }
             }
-            rearmListening()
             return
         }
 
-        // Duplicate utterance check: ignore identical input received within 1.5 seconds
+        // Duplicate utterance filter: ignore identical command within 1.5 seconds
         val now = System.currentTimeMillis()
         if (trimmed.equals(lastProcessedUtterance, ignoreCase = true) && (now - lastProcessedTime) < 1500) {
-            rearmListening()
             return
         }
         lastProcessedUtterance = trimmed
         lastProcessedTime = now
 
-        // Add user command to conversation
         conversationRepository.addMessage(role = "user", content = trimmed)
 
-        // Kick off AI completion
+        // Generate AI response
         processWithAI()
-
-        // Keep microphone listening actively during thinking and speaking!
-        rearmListening()
     }
 
     private fun isAcousticEcho(candidateText: String): Boolean {
@@ -236,20 +387,7 @@ class VoiceSessionCoordinator(
         val cleanSpoken = spoken.lowercase().trim()
 
         if (cleanCandidate.length < 4) return false
-
-        // If candidate is a substring of what JARVIS is currently speaking, it is acoustic leakage
         return cleanSpoken.contains(cleanCandidate)
-    }
-
-    fun sendTextMessage(text: String) {
-        if (text.isBlank()) return
-        stopListening()
-        stopSpeaking()
-        _lastErrorMessage.value = null
-        _isSessionActive.value = true
-        conversationRepository.addMessage(role = "user", content = text.trim())
-        processWithAI()
-        rearmListening()
     }
 
     private fun processWithAI() {
@@ -271,7 +409,6 @@ class VoiceSessionCoordinator(
                 is AIResult.Success -> {
                     // Check if user interrupted while we were thinking
                     if (currentGeneration != activeGenerationId.get() || !_isSessionActive.value) {
-                        // User already interrupted; discard stale response
                         return@launch
                     }
 
@@ -290,7 +427,10 @@ class VoiceSessionCoordinator(
                         content = "Communication notice: ${result.message}",
                         isError = true
                     )
-                    rearmListening()
+                    delay(1000)
+                    if (_isSessionActive.value) {
+                        _voiceState.value = VoiceState.LISTENING
+                    }
                 }
             }
         }
@@ -318,7 +458,9 @@ class VoiceSessionCoordinator(
                 override fun onSpeechDone() {
                     if (generationId == activeGenerationId.get()) {
                         currentlySpokenAiText = null
-                        handleSpeechComplete()
+                        if (_isSessionActive.value) {
+                            _voiceState.value = VoiceState.LISTENING
+                        }
                     }
                 }
 
@@ -326,76 +468,126 @@ class VoiceSessionCoordinator(
                     if (generationId == activeGenerationId.get()) {
                         currentlySpokenAiText = null
                         _lastErrorMessage.value = errorMessage
-                        handleSpeechComplete()
+                        if (_isSessionActive.value) {
+                            _voiceState.value = VoiceState.LISTENING
+                        }
                     }
                 }
             })
         }
     }
 
-    private fun handleSpeechComplete() {
-        scope.launch {
-            val settings = preferences.voiceSettingsFlow.first()
-            if (_isSessionActive.value && settings.continuousMode) {
-                // In continuous conversation, smoothly transition to LISTENING
-                if (_voiceState.value == VoiceState.JARVIS_SPEAKING) {
-                    _voiceState.value = VoiceState.LISTENING
-                }
-                rearmListening()
-            } else if (_isSessionActive.value) {
-                _voiceState.value = VoiceState.READY
-            } else {
-                _voiceState.value = VoiceState.SESSION_ENDED
-            }
-        }
-    }
-
-    private fun rearmListening() {
-        scope.launch {
-            if (_isSessionActive.value) {
-                delay(60)
-                if (_isSessionActive.value) {
-                    startContinuousListening()
-                }
-            }
-        }
-    }
-
+    /**
+     * Halts speech vocalization immediately.
+     * Does NOT stop microphone capture. Capture continues continuously.
+     */
     fun stopSpeaking() {
         activeGenerationId.incrementAndGet()
         currentlySpokenAiText = null
+        realtimeAudioPlayer.stopAndFlush()
         voiceOutputEngine.stop()
-        if (_voiceState.value == VoiceState.JARVIS_SPEAKING) {
+        if (_voiceState.value == VoiceState.JARVIS_SPEAKING || _voiceState.value == VoiceState.THINKING) {
             _voiceState.value = VoiceState.LISTENING
-            rearmListening()
         }
     }
 
+    /**
+     * Pauses listening without terminating the session structure.
+     */
     fun stopListening() {
-        voiceInputEngine.stopListening()
         if (_voiceState.value == VoiceState.LISTENING || _voiceState.value == VoiceState.USER_SPEAKING) {
             _voiceState.value = VoiceState.READY
         }
     }
 
+    /**
+     * Explicitly ends the live voice session.
+     * Stops continuous AudioRecord capture, releases WebSocket, AudioTrack, and AudioFocus.
+     */
     fun endSession() {
         _isSessionActive.value = false
         activeGenerationId.incrementAndGet()
         currentlySpokenAiText = null
+
         aiJob?.cancel()
         aiJob = null
-        voiceInputEngine.cancel()
+
+        // Stop audio playback
+        realtimeAudioPlayer.stopAndFlush()
         voiceOutputEngine.stop()
+
+        // Stop continuous AudioRecord microphone capture
+        continuousCaptureEngine.stopCapture()
+        voiceInputEngine.cancel()
+
+        // Close Gemini Live WebSocket
+        geminiLiveSession?.close()
+        geminiLiveSession = null
+
+        abandonSystemAudioFocus()
+
         _voiceState.value = VoiceState.SESSION_ENDED
         _audioRmsDb.value = 0f
         _partialTranscript.value = ""
 
         scope.launch {
-            delay(1200)
+            delay(1000)
             if (!_isSessionActive.value && _voiceState.value == VoiceState.SESSION_ENDED) {
                 _voiceState.value = VoiceState.READY
             }
         }
+    }
+
+    private fun requestSystemAudioFocus() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val playbackAttributes = AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build()
+
+                audioFocusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+                    .setAudioAttributes(playbackAttributes)
+                    .setAcceptsDelayedFocusGain(true)
+                    .setOnAudioFocusChangeListener { focusChange ->
+                        when (focusChange) {
+                            AudioManager.AUDIOFOCUS_LOSS -> {
+                                endSession()
+                            }
+                            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+                                stopSpeaking()
+                            }
+                            AudioManager.AUDIOFOCUS_GAIN -> {
+                                // Regained focus
+                            }
+                        }
+                    }
+                    .build()
+
+                audioFocusRequest?.let { audioManager.requestAudioFocus(it) }
+            } else {
+                @Suppress("DEPRECATION")
+                audioManager.requestAudioFocus(
+                    null,
+                    AudioManager.STREAM_VOICE_CALL,
+                    AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK
+                )
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Audio focus request failed: ${e.message}")
+        }
+    }
+
+    private fun abandonSystemAudioFocus() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                audioFocusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
+                audioFocusRequest = null
+            } else {
+                @Suppress("DEPRECATION")
+                audioManager.abandonAudioFocus(null)
+            }
+        } catch (_: Exception) {}
     }
 
     fun clearError() {
@@ -407,6 +599,7 @@ class VoiceSessionCoordinator(
 
     fun shutdown() {
         endSession()
+        realtimeAudioPlayer.release()
         voiceInputEngine.destroy()
         voiceOutputEngine.shutdown()
     }

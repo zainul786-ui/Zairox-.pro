@@ -72,8 +72,9 @@ class OpenAICompatibleProvider : AIProvider {
         val endpoint = resolveEndpoint(config.baseUrl)
 
         return try {
+            val model = if (config.modelName.startsWith("models/")) config.modelName.removePrefix("models/") else config.modelName
             val jsonPayload = JSONObject().apply {
-                put("model", config.modelName)
+                put("model", model)
                 put("temperature", config.temperature.toDouble())
                 put("max_tokens", maxTokensOverride ?: config.maxTokens)
 
@@ -129,7 +130,13 @@ class OpenAICompatibleProvider : AIProvider {
     }
 
     private fun resolveEndpoint(rawBaseUrl: String): String {
-        val trimmed = rawBaseUrl.trim().removeSuffix("/")
+        var trimmed = rawBaseUrl.trim().removeSuffix("/")
+        if (trimmed.startsWith("wss://")) {
+            trimmed = "https://" + trimmed.removePrefix("wss://")
+        }
+        if (trimmed.contains("generativelanguage.googleapis.com") && !trimmed.contains("/openai")) {
+            trimmed = "$trimmed/v1beta/openai"
+        }
         return if (trimmed.endsWith("/chat/completions")) {
             trimmed
         } else {
